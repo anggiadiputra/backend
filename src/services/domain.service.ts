@@ -591,6 +591,37 @@ export class DomainService {
                 return { success: false, error: result.message || 'Operation failed', statusCode: 400 };
             }
 
+            // Sync certain changes back to local database
+            try {
+                if (action === 'set_lock') {
+                    await this.supabaseAdmin
+                        .from('rdash_domains')
+                        .update({ is_locked: data.locked, synced_at: new Date().toISOString() })
+                        .eq('id', domainId);
+                } else if (action === 'set_whois_protection') {
+                    await this.supabaseAdmin
+                        .from('rdash_domains')
+                        .update({ whois_protection: data.enabled, synced_at: new Date().toISOString() })
+                        .eq('id', domainId);
+                } else if (action === 'update_nameservers') {
+                    const nsData: any = { synced_at: new Date().toISOString() };
+                    data.nameservers.forEach((ns: string, i: number) => {
+                        nsData[`nameserver_${i + 1}`] = ns;
+                    });
+                    // Clear remaining NS if any
+                    for (let i = data.nameservers.length; i < 5; i++) {
+                        nsData[`nameserver_${i + 1}`] = null;
+                    }
+                    await this.supabaseAdmin
+                        .from('rdash_domains')
+                        .update(nsData)
+                        .eq('id', domainId);
+                }
+            } catch (syncError) {
+                console.error('[DomainService] Failed to sync management action to local DB:', syncError);
+                // We don't return error here because the Rdash action was successful
+            }
+
             return { success: true, data: result };
         } catch (error: any) {
             return {
