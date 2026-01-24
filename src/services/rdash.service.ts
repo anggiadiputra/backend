@@ -178,6 +178,11 @@ class RdashService {
         // Map is_locked (API) to is_transfer_locked (Frontend)
         // We assume API is_locked serves as Transfer Lock (Theft Protection)
         result.data.is_transfer_locked = result.data.is_locked;
+
+        // Map Registrar Lock (is_locked for Frontend) based on status string
+        // If status contains 'clientUpdateProhibited', we consider it Registrar Locked
+        const status = typeof result.data.status === 'string' ? result.data.status.toLowerCase() : '';
+        result.data.is_locked = status.includes('clientupdateprohibited') || status.includes('clientdeleteprohibited');
       }
 
       return result;
