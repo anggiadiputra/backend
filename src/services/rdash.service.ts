@@ -642,8 +642,11 @@ class RdashService {
 
   // Theft Protection (clientTransferProhibited) - Uses /locked endpoint
   async setTheftProtection(domainId: number, locked: boolean, reason?: string): Promise<RdashResponse<any>> {
+    console.log(`[RdashService] setTheftProtection called: domainId=${domainId}, locked=${locked}, reason=${reason}`);
     try {
       const url = `${this.baseUrl}/domains/${domainId}/locked`;
+      console.log(`[RdashService] Request URL: ${url}, Method: ${locked ? 'PUT' : 'DELETE'}`);
+
       const options: any = {
         method: locked ? 'PUT' : 'DELETE',
         headers: this.getHeaders(),
@@ -658,6 +661,8 @@ class RdashService {
 
       const response = await this.fetchWithTimeout(url, options);
       const text = await response.text();
+      console.log(`[RdashService] Response status: ${response.status}, body: ${text}`);
+
       let result: any;
       try {
         result = JSON.parse(text);

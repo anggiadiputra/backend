@@ -248,6 +248,33 @@ export class DomainService {
                 const rdashResponse = await rdashService.getDomain(localDomain.id);
 
                 if (rdashResponse.success && rdashResponse.data) {
+                    // Sync key fields from Rdash to local database
+                    try {
+                        const now = new Date().toISOString();
+                        const updateData: any = {
+                            synced_at: now,
+                            status: rdashResponse.data.status,
+                            status_label: rdashResponse.data.status_label,
+                            is_locked: rdashResponse.data.is_locked,
+                            is_transfer_locked: rdashResponse.data.is_transfer_locked,
+                            nameserver_1: rdashResponse.data.nameserver_1,
+                            nameserver_2: rdashResponse.data.nameserver_2,
+                            nameserver_3: rdashResponse.data.nameserver_3,
+                            nameserver_4: rdashResponse.data.nameserver_4,
+                            nameserver_5: rdashResponse.data.nameserver_5,
+                            expired_at: rdashResponse.data.expired_at,
+                        };
+
+                        await this.supabaseAdmin
+                            .from('rdash_domains')
+                            .update(updateData)
+                            .eq('id', localDomain.id);
+
+                        console.log(`[DomainService] Synced domain ${localDomain.id} from Rdash to local DB`);
+                    } catch (syncError) {
+                        console.error('[DomainService] Failed to sync domain to local DB:', syncError);
+                    }
+
                     return {
                         success: true,
                         data: { data: rdashResponse.data, source: 'rdash' },
