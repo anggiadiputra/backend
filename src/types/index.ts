@@ -95,7 +95,7 @@ export interface RdashCustomer {
 export interface RdashDomain {
   id: number;
   name: string;
-  status: string;
+  status: string | number;
   status_label: string;
   expired_at: string;
   customer_id?: number;
@@ -104,9 +104,11 @@ export interface RdashDomain {
   nameserver_3: string | null;
   nameserver_4: string | null;
   nameserver_5: string | null;
-  is_premium: boolean;
-  is_locked: boolean; // Registrar Lock (Update/Delete)
-  is_transfer_locked?: boolean; // Theft Protection (Transfer)
+  is_premium: boolean | number;
+  is_locked: boolean | number; // Theft Protection (clientTransferProhibited)
+  is_registrar_locked?: boolean | number; // Registrar Lock (clientUpdateProhibited)
+  is_transfer_locked?: boolean; // Mapped field for frontend
+  whois_protection?: boolean | number;
   created_at: string;
   updated_at: string;
 }

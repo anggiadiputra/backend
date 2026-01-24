@@ -164,12 +164,13 @@ export class DomainService {
 
     /**
      * Get single domain by ID with access check
+     * Now also fetches fresh lock status from Rdash API
      */
     async getDomainById(
         domainId: number,
         userId: string,
         userRole: 'admin' | 'seller' | 'customer'
-    ): Promise<ServiceResult<Domain>> {
+    ): Promise<ServiceResult<any>> {
         try {
             const domain = await this.domainRepo.findById(domainId);
 
@@ -199,6 +200,25 @@ export class DomainService {
                         statusCode: 403,
                     };
                 }
+            }
+
+            // Fetch fresh lock status from Rdash to ensure accuracy
+            try {
+                const rdashResponse = await rdashService.getDomain(domainId);
+                if (rdashResponse.success && rdashResponse.data) {
+                    // Merge Rdash data with local data
+                    const mergedDomain = {
+                        ...domain,
+                        is_locked: rdashResponse.data.is_locked,
+                        is_transfer_locked: rdashResponse.data.is_transfer_locked,
+                        status: rdashResponse.data.status,
+                        status_label: rdashResponse.data.status_label,
+                        whois_protection: rdashResponse.data.whois_protection,
+                    };
+                    return { success: true, data: mergedDomain };
+                }
+            } catch (rdashError) {
+                console.error('[DomainService] Failed to fetch from Rdash, using local data:', rdashError);
             }
 
             return { success: true, data: domain };
