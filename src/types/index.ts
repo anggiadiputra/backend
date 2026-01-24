@@ -105,7 +105,8 @@ export interface RdashDomain {
   nameserver_4: string | null;
   nameserver_5: string | null;
   is_premium: boolean;
-  is_locked: boolean;
+  is_locked: boolean; // Registrar Lock (Update/Delete)
+  is_transfer_locked?: boolean; // Theft Protection (Transfer)
   created_at: string;
   updated_at: string;
 }

@@ -296,6 +296,16 @@ domains.put('/:id/lock', async (c) => {
   return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
 });
 
+domains.put('/:id/theft-protection', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'set_theft_protection', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
 domains.put('/:id/whois-protection', async (c) => {
   const user = c.get('user');
   const token = c.get('token');

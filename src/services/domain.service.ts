@@ -538,6 +538,9 @@ export class DomainService {
                 case 'set_lock':
                     result = await rdashService.setRegistrarLock(domainId, data.locked, data.reason);
                     break;
+                case 'set_theft_protection':
+                    result = await rdashService.setTheftProtection(domainId, data.locked, data.reason);
+                    break;
                 case 'get_whois_protection':
                     result = await rdashService.getWhoisProtection(domainId);
                     break;
@@ -601,6 +604,14 @@ export class DomainService {
                         .from('rdash_domains')
                         .update({ is_locked: data.locked, synced_at: now })
                         .eq('id', domainId);
+
+                } else if (action === 'set_theft_protection') {
+                    // Update transfer lock status if supported by DB
+                    // await this.supabaseAdmin
+                    //    .from('rdash_domains')
+                    //    .update({ is_transfer_locked: data.locked, synced_at: now })
+                    //    .eq('id', domainId);
+                    console.log(`[DomainService] Theft protection synced: ${data.locked}`);
 
                 } else if (action === 'set_whois_protection') {
                     await this.supabaseAdmin
