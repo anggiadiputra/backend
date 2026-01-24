@@ -174,17 +174,26 @@ class RdashService {
 
       const result = await response.json() as RdashResponse<RdashDomain>;
 
+      // Debug logging
+      console.log(`[RdashService] getDomain ${domainId} raw response:`, JSON.stringify(result.data, null, 2));
+
       if (result.success && result.data) {
         const status = typeof result.data.status === 'string' ? result.data.status.toLowerCase() : '';
+        console.log(`[RdashService] Domain ${domainId} status string: "${result.data.status}"`);
+        console.log(`[RdashService] Domain ${domainId} is_locked from API: ${result.data.is_locked}`);
 
         // Map is_locked (API) to is_transfer_locked (Frontend)
         // We prioritze checking the status string for EPP codes which is more reliable.
         // 'clientTransferProhibited' = Theft Protection (Transfer Lock)
-        result.data.is_transfer_locked = status.includes('clienttransferprohibited') || !!result.data.is_locked;
+        const hasTransferProhibited = status.includes('clienttransferprohibited');
+        result.data.is_transfer_locked = hasTransferProhibited || !!result.data.is_locked;
+        console.log(`[RdashService] Domain ${domainId} clientTransferProhibited in status: ${hasTransferProhibited}, final is_transfer_locked: ${result.data.is_transfer_locked}`);
 
         // Map Registrar Lock (is_locked for Frontend) based on status string
         // 'clientUpdateProhibited' or 'clientDeleteProhibited' = Registrar Lock (Update Lock)
-        result.data.is_locked = status.includes('clientupdateprohibited') || status.includes('clientdeleteprohibited');
+        const hasUpdateProhibited = status.includes('clientupdateprohibited') || status.includes('clientdeleteprohibited');
+        result.data.is_locked = hasUpdateProhibited;
+        console.log(`[RdashService] Domain ${domainId} final is_locked (Registrar Lock): ${result.data.is_locked}`);
       }
 
       return result;
