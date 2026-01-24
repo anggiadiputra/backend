@@ -591,35 +591,40 @@ export class DomainService {
                 return { success: false, error: result.message || 'Operation failed', statusCode: 400 };
             }
 
-            // Sync certain changes back to local database
+            // Sync changes back to local database by re-fetching from Rdash
             try {
-                if (action === 'set_lock') {
+                // Wait a bit for Rdash to process
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                const rdashResponse = await rdashService.getDomain(domainId);
+                if (rdashResponse.success && rdashResponse.data) {
+                    const rdashDomain = rdashResponse.data;
+                    const domainData = {
+                        id: rdashDomain.id,
+                        name: rdashDomain.name,
+                        status: rdashDomain.status,
+                        status_label: rdashDomain.status_label,
+                        is_premium: rdashDomain.is_premium,
+                        is_locked: rdashDomain.is_locked,
+                        nameserver_1: rdashDomain.nameserver_1,
+                        nameserver_2: rdashDomain.nameserver_2,
+                        nameserver_3: rdashDomain.nameserver_3,
+                        nameserver_4: rdashDomain.nameserver_4,
+                        nameserver_5: rdashDomain.nameserver_5,
+                        expired_at: rdashDomain.expired_at,
+                        rdash_created_at: rdashDomain.created_at,
+                        rdash_updated_at: rdashDomain.updated_at,
+                        synced_at: new Date().toISOString(),
+                    };
+
                     await this.supabaseAdmin
                         .from('rdash_domains')
-                        .update({ is_locked: data.locked, synced_at: new Date().toISOString() })
-                        .eq('id', domainId);
-                } else if (action === 'set_whois_protection') {
-                    await this.supabaseAdmin
-                        .from('rdash_domains')
-                        .update({ whois_protection: data.enabled, synced_at: new Date().toISOString() })
-                        .eq('id', domainId);
-                } else if (action === 'update_nameservers') {
-                    const nsData: any = { synced_at: new Date().toISOString() };
-                    data.nameservers.forEach((ns: string, i: number) => {
-                        nsData[`nameserver_${i + 1}`] = ns;
-                    });
-                    // Clear remaining NS if any
-                    for (let i = data.nameservers.length; i < 5; i++) {
-                        nsData[`nameserver_${i + 1}`] = null;
-                    }
-                    await this.supabaseAdmin
-                        .from('rdash_domains')
-                        .update(nsData)
-                        .eq('id', domainId);
+                        .upsert(domainData, { onConflict: 'id' });
+
+                    console.log(`[DomainService] Successfully synced domain ${domainId} after action ${action}`);
                 }
             } catch (syncError) {
-                console.error('[DomainService] Failed to sync management action to local DB:', syncError);
-                // We don't return error here because the Rdash action was successful
+                console.error('[DomainService] Failed to sync domain after management action:', syncError);
             }
 
             return { success: true, data: result };
