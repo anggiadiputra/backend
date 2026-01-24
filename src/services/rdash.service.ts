@@ -175,13 +175,15 @@ class RdashService {
       const result = await response.json() as RdashResponse<RdashDomain>;
 
       if (result.success && result.data) {
+        const status = typeof result.data.status === 'string' ? result.data.status.toLowerCase() : '';
+
         // Map is_locked (API) to is_transfer_locked (Frontend)
-        // We assume API is_locked serves as Transfer Lock (Theft Protection)
-        result.data.is_transfer_locked = result.data.is_locked;
+        // We prioritze checking the status string for EPP codes which is more reliable.
+        // 'clientTransferProhibited' = Theft Protection (Transfer Lock)
+        result.data.is_transfer_locked = status.includes('clienttransferprohibited') || !!result.data.is_locked;
 
         // Map Registrar Lock (is_locked for Frontend) based on status string
-        // If status contains 'clientUpdateProhibited', we consider it Registrar Locked
-        const status = typeof result.data.status === 'string' ? result.data.status.toLowerCase() : '';
+        // 'clientUpdateProhibited' or 'clientDeleteProhibited' = Registrar Lock (Update Lock)
         result.data.is_locked = status.includes('clientupdateprohibited') || status.includes('clientdeleteprohibited');
       }
 
