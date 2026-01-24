@@ -587,24 +587,49 @@ class RdashService {
 
   // Registrar Lock
   async setRegistrarLock(domainId: number, locked: boolean, reason?: string): Promise<RdashResponse<any>> {
-    if (locked) {
-      const formData = new URLSearchParams();
-      if (reason) formData.append('reason', reason);
-      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/registrar-locked`, {
-        method: 'PUT',
-        headers: {
-          ...this.getHeaders(),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString(),
-      });
-      return response.json() as Promise<RdashResponse<any>>;
-    } else {
-      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/registrar-locked`, {
-        method: 'DELETE',
+    try {
+      const url = `${this.baseUrl}/domains/${domainId}/registrar-locked`;
+      const options: any = {
+        method: locked ? 'PUT' : 'DELETE',
         headers: this.getHeaders(),
-      });
-      return response.json() as Promise<RdashResponse<any>>;
+      };
+
+      if (locked) {
+        const formData = new URLSearchParams();
+        if (reason) formData.append('reason', reason);
+        options.body = formData.toString();
+        options.headers = { ...options.headers, 'Content-Type': 'application/x-www-form-urlencoded' };
+      }
+
+      const response = await this.fetchWithTimeout(url, options);
+      const text = await response.text();
+      let result: any;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result = { success: false, message: text || `Rdash error: ${response.status}` };
+      }
+
+      if (!response.ok) {
+        // If unlocking and status is already not associated, treat as success
+        if (!locked && result.message?.toLowerCase().includes('not associated')) {
+          return { success: true, data: result.data, message: 'Registrar lock already disabled' };
+        }
+        // If locking and status is already associated, treat as success
+        if (locked && result.message?.toLowerCase().includes('already associated')) {
+          return { success: true, data: result.data, message: 'Registrar lock already enabled' };
+        }
+        return {
+          success: false,
+          data: result.data,
+          message: result.message || `Rdash API error: ${response.statusText}`,
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] setRegistrarLock error:', error);
+      return { success: false, data: null, message: error.message };
     }
   }
 
@@ -618,11 +643,37 @@ class RdashService {
   }
 
   async setWhoisProtection(domainId: number, enabled: boolean): Promise<RdashResponse<any>> {
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/whois-protection`, {
-      method: enabled ? 'PUT' : 'DELETE',
-      headers: this.getHeaders(),
-    });
-    return response.json() as Promise<RdashResponse<any>>;
+    try {
+      const url = `${this.baseUrl}/domains/${domainId}/whois-protection`;
+      const response = await this.fetchWithTimeout(url, {
+        method: enabled ? 'PUT' : 'DELETE',
+        headers: this.getHeaders(),
+      });
+
+      const text = await response.text();
+      let result: any;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        result = { success: false, message: text || `Rdash error: ${response.status}` };
+      }
+
+      if (!response.ok) {
+        if (!enabled && result.message?.toLowerCase().includes('not associated')) {
+          return { success: true, data: result.data, message: 'WHOIS protection already disabled' };
+        }
+        return {
+          success: false,
+          data: result.data,
+          message: result.message || `Rdash API error: ${response.statusText}`,
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] setWhoisProtection error:', error);
+      return { success: false, data: null, message: error.message };
+    }
   }
 
   // Nameservers
