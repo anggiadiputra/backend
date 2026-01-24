@@ -21,6 +21,7 @@ import notifications from './routes/notifications';
 import transactions from './routes/transactions';
 import rdash from './routes/rdash';
 import logs from './routes/logs';
+import settings from './routes/settings'; // Import settings route
 
 import { globalLimiter, securityHeaders, removePoweredBy, checkBlacklist } from './middleware/security';
 import { xssSanitizer } from './middleware/sanitizer';
@@ -115,6 +116,7 @@ app.route('/api/notifications', notifications);
 app.route('/api/transactions', transactions);
 app.route('/api/rdash', rdash);
 app.route('/api/logs', logs);
+app.route('/api/settings', settings); // Register settings route
 
 // Documentation
 app.get('/api/openapi.json', (c) => c.json(openApiSpec));

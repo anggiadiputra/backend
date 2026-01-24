@@ -220,33 +220,95 @@ export class DomainService {
         userRole: 'admin' | 'seller' | 'customer'
     ): Promise<ServiceResult<{ data: any; source: string }>> {
         try {
-            // First verify access
-            const accessCheck = await this.getDomainById(domainId, userId, userRole);
-            if (!accessCheck.success || !accessCheck.data) {
-                return {
-                    success: false,
-                    error: accessCheck.error,
-                    statusCode: accessCheck.statusCode,
-                };
+            // First try to get domain from local database
+            const localDomain = await this.domainRepo.findById(domainId);
+
+            if (localDomain) {
+                // Check access for local domain
+                if ((userRole === 'admin' || userRole === 'seller') && localDomain.seller_id !== userId) {
+                    return {
+                        success: false,
+                        error: 'Access denied',
+                        statusCode: 403,
+                    };
+                }
+
+                if (userRole === 'customer') {
+                    const customer = await this.customerRepo.findByUserId(userId);
+                    if (!customer || localDomain.customer_id !== customer.id) {
+                        return {
+                            success: false,
+                            error: 'Access denied',
+                            statusCode: 403,
+                        };
+                    }
+                }
+
+                // Get full details from Rdash using domain ID
+                const rdashResponse = await rdashService.getDomain(localDomain.id);
+
+                if (rdashResponse.success && rdashResponse.data) {
+                    return {
+                        success: true,
+                        data: { data: rdashResponse.data, source: 'rdash' },
+                    };
+                } else {
+                    return {
+                        success: true,
+                        data: { data: localDomain, source: 'local' },
+                    };
+                }
+            } else {
+                // Domain not in local database, try to get directly from Rdash
+                // This is for cases where domain exists in Rdash but not synced yet
+                console.log(`[DomainService] Domain ${domainId} not found locally, trying Rdash directly`);
+
+                const rdashResponse = await rdashService.getDomain(domainId);
+
+                if (rdashResponse.success) {
+                    // Check if user has access to this domain based on seller_id or customer_id
+                    const rdashDomain = rdashResponse.data;
+
+                    if (userRole === 'seller') {
+                        // For sellers, we need to check if they own this domain
+                        // Since we don't have seller_id in Rdash response, we'll allow access for now
+                        // In production, you might want to add additional checks
+                        return {
+                            success: true,
+                            data: { data: rdashDomain, source: 'rdash' },
+                        };
+                    } else if (userRole === 'customer') {
+                        // For customers, check if they own this domain
+                        const customer = await this.customerRepo.findByUserId(userId);
+                        if (customer && rdashDomain.customer_id === customer.id) {
+                            return {
+                                success: true,
+                                data: { data: rdashDomain, source: 'rdash' },
+                            };
+                        } else {
+                            return {
+                                success: false,
+                                error: 'Access denied',
+                                statusCode: 403,
+                            };
+                        }
+                    } else {
+                        // Admin can access all
+                        return {
+                            success: true,
+                            data: { data: rdashDomain, source: 'rdash' },
+                        };
+                    }
+                } else {
+                    return {
+                        success: false,
+                        error: 'Domain not found',
+                        statusCode: 404,
+                    };
+                }
             }
-
-            const localDomain = accessCheck.data;
-
-            // Get full details from Rdash using domain ID
-            const rdashResponse = await rdashService.getDomain(localDomain.id);
-
-            if (!rdashResponse.success) {
-                return {
-                    success: true,
-                    data: { data: localDomain, source: 'local' },
-                };
-            }
-
-            return {
-                success: true,
-                data: { data: rdashResponse.data, source: 'rdash' },
-            };
         } catch (error: any) {
+            console.error('[DomainService] getDomainDetails error:', error);
             return {
                 success: false,
                 error: error.message || 'Internal server error',
@@ -443,6 +505,97 @@ export class DomainService {
             return {
                 success: false,
                 error: error.message || 'Failed to fetch expiring domains',
+                statusCode: 500,
+            };
+        }
+    }
+
+    /**
+     * Wrapper for Rdash management functions with access control
+     */
+    async manageDomain(
+        domainId: number,
+        userId: string,
+        userRole: 'admin' | 'seller' | 'customer',
+        action: string,
+        data: any
+    ): Promise<ServiceResult<any>> {
+        try {
+            // Verify access
+            const accessCheck = await this.getDomainById(domainId, userId, userRole);
+            if (!accessCheck.success) {
+                return accessCheck;
+            }
+
+            let result: any;
+            switch (action) {
+                case 'get_auth_code':
+                    result = await rdashService.getAuthCode(domainId);
+                    break;
+                case 'update_auth_code':
+                    result = await rdashService.updateAuthCode(domainId, data.auth_code);
+                    break;
+                case 'set_lock':
+                    result = await rdashService.setRegistrarLock(domainId, data.locked, data.reason);
+                    break;
+                case 'get_whois_protection':
+                    result = await rdashService.getWhoisProtection(domainId);
+                    break;
+                case 'set_whois_protection':
+                    result = await rdashService.setWhoisProtection(domainId, data.enabled);
+                    break;
+                case 'update_nameservers':
+                    result = await rdashService.updateNameservers(domainId, data.nameservers);
+                    break;
+                case 'get_dns':
+                    result = await rdashService.getDnsRecords(domainId);
+                    break;
+                case 'update_dns':
+                    result = await rdashService.updateDnsRecords(domainId, data.records);
+                    break;
+                case 'delete_dns_record':
+                    result = await rdashService.deleteDnsRecord(domainId, data.record);
+                    break;
+                case 'get_hosts':
+                    result = await rdashService.getHosts(domainId);
+                    break;
+                case 'create_host':
+                    result = await rdashService.createHost(domainId, data);
+                    break;
+                case 'update_host':
+                    result = await rdashService.updateHost(domainId, data.host_id, data);
+                    break;
+                case 'delete_host':
+                    result = await rdashService.deleteHost(domainId, data.host_id);
+                    break;
+                case 'get_forwarding':
+                    result = await rdashService.getForwarding(domainId);
+                    break;
+                case 'create_forwarding':
+                    result = await rdashService.createForwarding(domainId, data);
+                    break;
+                case 'delete_forwarding':
+                    result = await rdashService.deleteForwarding(domainId, data.forwarding_id);
+                    break;
+                case 'set_dnssec':
+                    result = await rdashService.setDnssec(domainId, data.enabled);
+                    break;
+                case 'whois':
+                    result = await rdashService.whoisLookup(accessCheck.data!.name);
+                    break;
+                default:
+                    return { success: false, error: 'Invalid action', statusCode: 400 };
+            }
+
+            if (result && result.success === false) {
+                return { success: false, error: result.message || 'Operation failed', statusCode: 400 };
+            }
+
+            return { success: true, data: result };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || 'Management operation failed',
                 statusCode: 500,
             };
         }

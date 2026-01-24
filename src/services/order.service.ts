@@ -1,5 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { OrderRepository, CustomerRepository, PaginatedResult, OrderWithItems, Order } from '../repositories';
+import { rdashService } from './rdash.service';
+import { LoggerService } from './logger.service';
 
 export interface ServiceResult<T> {
     success: boolean;
@@ -213,5 +215,128 @@ export class OrderService {
                 statusCode: 500,
             };
         }
+    }
+
+    /**
+     * Fulfill an order by registering/transferring domain at Rdash
+     * Can be called by PaymentService (webhook) or manually by Seller
+     */
+    async fulfillOrder(
+        orderId: number,
+        performedByUserId: string,
+        source: 'payment_webhook' | 'manual' = 'manual'
+    ): Promise<ServiceResult<{ success: boolean; message: string; rdash_data?: any }>> {
+        console.log(`[OrderService] Fulfilling order ${orderId} (source: ${source})`);
+
+        const order = await this.orderRepo.findByIdWithDetails(orderId);
+
+        if (!order) {
+            return { success: false, error: 'Order not found', statusCode: 404 };
+        }
+
+        if (order.status === 'completed') {
+            return {
+                success: true,
+                data: { success: true, message: 'Order already completed' }
+            };
+        }
+
+        let rdashResult: any;
+
+        try {
+            if (order.action === 'transfer') {
+                rdashResult = await rdashService.transferDomain({
+                    domain: order.domain_name,
+                    customer_id: order.rdash_customer_id,
+                    auth_code: order.auth_code || '',
+                    period: order.period || 1,
+                    whois_protection: order.whois_protection || false,
+                });
+            } else if (order.action === 'renew') {
+                // For renew we need the rdash_domain_id.
+                if (!order.rdash_domain_id) {
+                    throw new Error('Missing Rdash Domain ID for renewal');
+                }
+
+                rdashResult = await rdashService.renewDomain({
+                    domain_id: order.rdash_domain_id,
+                    period: order.period || 1,
+                    current_date: order.renew_current_date || new Date().toISOString().split('T')[0],
+                    whois_protection: order.whois_protection || false,
+                });
+            } else {
+                // Register
+                rdashResult = await rdashService.registerDomain({
+                    domain: order.domain_name,
+                    customer_id: order.rdash_customer_id,
+                    period: order.period || 1,
+                    whois_protection: order.whois_protection || false,
+                });
+            }
+
+            const updateData: any = {
+                updated_at: new Date().toISOString(),
+                status: rdashResult.success ? 'completed' : (order.status === 'paid' ? 'paid' : 'processing'),
+                notes: order.notes ? `${order.notes}\n` : '' + `[${new Date().toISOString()}] Provisioning: ${rdashResult.success ? 'Success' : 'Failed - ' + rdashResult.message}`
+            };
+
+            if (rdashResult.success) {
+                updateData.completed_at = new Date().toISOString();
+                updateData.rdash_response = rdashResult.data;
+
+                // Save domain to rdash_domains table
+                if (order.action !== 'renew' && rdashResult.data) {
+                    await this.saveDomain(rdashResult.data, order.seller_id, order.rdash_customer_id);
+                }
+            } else {
+                updateData.rdash_error = rdashResult.message;
+            }
+
+            await this.orderRepo.update(orderId, updateData);
+
+            // Log action
+            await LoggerService.logAction({
+                user_id: performedByUserId,
+                action: 'fulfill_order',
+                resource: `order/${orderId}`,
+                payload: { source, rdash_success: rdashResult.success, message: rdashResult.message },
+                status: rdashResult.success ? 'success' : 'error'
+            });
+
+            if (!rdashResult.success) {
+                return {
+                    success: false,
+                    error: `Rdash Provisioning Failed: ${rdashResult.message}`,
+                    statusCode: 502
+                };
+            }
+
+            return {
+                success: true,
+                data: { success: true, message: 'Order fulfilled successfully', rdash_data: rdashResult.data }
+            };
+
+        } catch (error: any) {
+            console.error('[OrderService] Fulfill error:', error);
+            return {
+                success: false,
+                error: error.message || 'Internal provisioning error',
+                statusCode: 500
+            };
+        }
+    }
+
+    private async saveDomain(domainData: any, sellerId: string, customerId: number) {
+        const domainRecord = {
+            id: domainData.id,
+            seller_id: sellerId,
+            customer_id: customerId,
+            name: domainData.name || domainData.domain,
+            status: domainData.status || 'active',
+            expired_at: domainData.expired_at || domainData.expiry_date,
+            created_at: new Date().toISOString(),
+            synced_at: new Date().toISOString(),
+        };
+        await this.supabaseAdmin.from('rdash_domains').upsert(domainRecord, { onConflict: 'id' });
     }
 }

@@ -71,12 +71,31 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
       return c.json({ success: false, error: 'No session created' }, 400);
     }
 
-    // Get user profile
-    const { data: profile } = await supabaseAdmin
+    // Get or create user profile
+    let { data: profile } = await supabaseAdmin
       .from('users')
       .select('*')
       .eq('id', data.user?.id)
       .single();
+
+    // Auto-create user if not exists
+    if (!profile && data.user) {
+      const { data: newUser, error: createError } = await supabaseAdmin
+        .from('users')
+        .insert({
+          id: data.user.id,
+          email: data.user.email,
+          role: 'customer',
+        })
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('[Auth] Failed to create user:', createError.message);
+      } else {
+        profile = newUser;
+      }
+    }
 
     await LoggerService.logAuth(getClientIp(c), 'verify_otp', 'success', {
       email,

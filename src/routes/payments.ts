@@ -56,6 +56,40 @@ payments.post('/methods/sync', authMiddleware, sellerOnly, async (c) => {
   }
 });
 
+// Admin: Get all payment methods
+payments.get('/admin/methods', authMiddleware, sellerOnly, async (c) => {
+  const paymentService = new PaymentService(supabaseAdmin);
+  const result = await paymentService.adminGetPaymentMethods();
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
+  }
+
+  return c.json({ success: true, data: result.data });
+});
+
+// Admin: Update payment method
+const updateMethodSchema = z.object({
+  is_enabled: z.boolean().optional(),
+  min_amount: z.number().optional(),
+  display_order: z.number().optional(),
+  // Add other fields if needed, but these are likely safe to edit
+});
+
+payments.put('/admin/methods/:id', authMiddleware, sellerOnly, zValidator('json', updateMethodSchema), async (c) => {
+  const id = c.req.param('id');
+  const body = c.req.valid('json');
+  const paymentService = new PaymentService(supabaseAdmin);
+
+  const result = await paymentService.updatePaymentMethod(id, body);
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
+  }
+
+  return c.json({ success: true, data: result.data });
+});
+
 
 // Create payment
 const createPaymentSchema = z.object({

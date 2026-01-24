@@ -8,9 +8,16 @@ export const supabaseClient = createClient(
 );
 
 // Admin client for server-side operations (uses service role key)
+// Note: Service role key bypasses RLS by default
 export const supabaseAdmin = createClient(
   env.SUPABASE_URL,
-  env.SUPABASE_SERVICE_ROLE_KEY
+  env.SUPABASE_SERVICE_ROLE_KEY,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
 );
 
 // Create client with user's JWT token

@@ -347,89 +347,165 @@ export class PaymentService {
     }
 
     private async processPaidOrder(orderId: string, merchantOrderId: string, duitkuData: any) {
+        // Use OrderService to fulfill order
+        // Need to instantiate OrderService (circular check? moving rdash logic out of PaymentService helps)
+        // OrderService needs public supabase client and admin client. PaymentService only has admin.
+        // We can pass admin for both as system action.
+
+        // Dynamic import to avoid circular dependency issues at module level if any
+        const { OrderService } = await import('./order.service');
+        const orderService = new OrderService(this.supabaseAdmin, this.supabaseAdmin);
+
+        // Fetch order to get user_id for logging context
         const { data: order } = await this.supabaseAdmin
             .from('orders')
-            .select('*')
+            .select('user_id')
             .eq('id', orderId)
             .single();
 
-        if (!order || order.status === 'completed') return;
+        const userId = order?.user_id || 'system';
 
-        console.log(`[PaymentService] Processing paid order ${orderId} (${order.action})`);
+        const result = await orderService.fulfillOrder(parseInt(orderId), userId, 'payment_webhook');
 
-        let rdashResult: any;
-
-        if (order.action === 'transfer') {
-            rdashResult = await rdashService.transferDomain({
-                domain: order.domain_name,
-                customer_id: order.rdash_customer_id,
-                auth_code: order.auth_code || '',
-                period: order.period || 1,
-                whois_protection: order.whois_protection || false,
-            });
-        } else if (order.action === 'renew') {
-            rdashResult = await rdashService.renewDomain({
-                domain_id: order.rdash_domain_id,
-                period: order.period || 1,
-                current_date: order.renew_current_date,
-                whois_protection: order.whois_protection || false,
-            });
-        } else {
-            rdashResult = await rdashService.registerDomain({
-                domain: order.domain_name,
-                customer_id: order.rdash_customer_id,
-                period: order.period || 1,
-                whois_protection: order.whois_protection || false,
-            });
-        }
-
-        const updateData: any = {
-            duitku_reference: duitkuData.reference,
-            updated_at: new Date().toISOString(),
-            status: rdashResult.success ? 'completed' : 'paid',
-            notes: `Pembayaran sukses (Cron). ${rdashResult.success ? 'Domain berhasil diproses.' : 'Domain gagal diproses: ' + rdashResult.message}`
-        };
-
-        if (rdashResult.success) {
-            updateData.completed_at = new Date().toISOString();
-            updateData.rdash_response = rdashResult.data;
-
-            // Save domain to rdash_domains table
-            if (order.action !== 'renew' && rdashResult.data) {
-                // Reuse save logic that should be in a shared helper, but for now inline simple upsert or call if available
-                // rdashService doesn't have saveDomain. We can implement a simplified one here.
-                await this.saveDomain(rdashResult.data, order.seller_id, order.rdash_customer_id);
-            }
-        } else {
-            updateData.rdash_error = rdashResult.message;
-        }
-
+        // Update with Duitku specific reference if not handled by fulfillOrder (fulfillOrder handles core logic)
+        // But we want to ensure Duitku reference is saved.
         await this.supabaseAdmin
             .from('orders')
-            .update(updateData)
+            .update({
+                duitku_reference: duitkuData.reference,
+                // If fulfillOrder failed, we still want to mark as paid so seller can retry manually?
+                // fulfillOrder updates status to paid/processing if failed.
+            })
             .eq('id', orderId);
 
         await LoggerService.logAction({
-            user_id: order.user_id,
+            user_id: userId,
             action: 'payment_cron_process',
             resource: `order/${orderId}`,
-            payload: { status: updateData.status, rdash_success: rdashResult.success },
+            payload: {
+                duitku_status: 'success',
+                fulfill_result: result
+            },
             status: 'success'
         });
     }
 
-    private async saveDomain(domainData: any, sellerId: string, customerId: number) {
-        // Simplified save domain
-        const domainRecord = {
-            id: domainData.id,
-            seller_id: sellerId,
-            customer_id: customerId,
-            name: domainData.name || domainData.domain,
-            status: domainData.status || 'active',
-            expired_at: domainData.expired_at || domainData.expiry_date,
-            created_at: new Date().toISOString(),
-            synced_at: new Date().toISOString(),
-        };
-        await this.supabaseAdmin.from('rdash_domains').upsert(domainRecord, { onConflict: 'id' });
+    // saveDomain moved to OrderService, removing from here
+    async checkStatusByOrderId(orderId: number): Promise<ServiceResult<any>> {
+        try {
+            // Get transaction for this order
+            const { data: transaction, error } = await this.supabaseAdmin
+                .from('payment_transactions')
+                .select('*')
+                .eq('order_id', orderId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (error || !transaction) {
+                return { success: false, error: 'Transaction not found', statusCode: 404 };
+            }
+
+            await this.checkSingleTransaction(transaction);
+
+            // Re-fetch updated status
+            const { data: updatedTx } = await this.supabaseAdmin
+                .from('payment_transactions')
+                .select('*')
+                .eq('id', transaction.id)
+                .single();
+
+            return { success: true, data: updatedTx };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || 'Failed to check payment status',
+                statusCode: 500
+            };
+        }
+    }
+
+    /**
+     * Get all payment methods for admin (including disabled)
+     */
+    async adminGetPaymentMethods(): Promise<ServiceResult<PaymentMethod[]>> {
+        try {
+            const { data, error } = await this.supabaseAdmin
+                .from('payment_methods')
+                .select('*')
+                .order('display_order', { ascending: true })
+                .order('payment_name', { ascending: true });
+
+            if (error) throw error;
+
+            return { success: true, data };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || 'Failed to fetch payment methods',
+                statusCode: 500
+            };
+        }
+    }
+
+    /**
+     * Update payment method (admin)
+     */
+    async updatePaymentMethod(
+        id: string,
+        data: Partial<PaymentMethod>
+    ): Promise<ServiceResult<PaymentMethod>> {
+        try {
+            const { data: updated, error } = await this.supabaseAdmin
+                .from('payment_methods')
+                .update({
+                    ...data,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            return { success: true, data: updated };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || 'Failed to update payment method',
+                statusCode: 500
+            };
+        }
+    }
+
+    /**
+     * Batch update display order
+     */
+    async reorderPaymentMethods(orders: { id: string, display_order: number }[]): Promise<ServiceResult<{ updated: number }>> {
+        try {
+            let updatedCount = 0;
+
+            // Execute sequentially or use a stored procedure if available. 
+            // Simple sequential update for flexibility since list is small (<20 items usually)
+            for (const item of orders) {
+                const { error } = await this.supabaseAdmin
+                    .from('payment_methods')
+                    .update({
+                        display_order: item.display_order,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', item.id);
+
+                if (!error) updatedCount++;
+            }
+
+            return { success: true, data: { updated: updatedCount } };
+        } catch (error: any) {
+            return {
+                success: false,
+                error: error.message || 'Failed to reorder payment methods',
+                statusCode: 500
+            };
+        }
     }
 }

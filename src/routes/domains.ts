@@ -113,8 +113,10 @@ domains.get('/:id/details', async (c) => {
 
   return c.json({
     success: true,
-    data: result.data?.data,
-    source: result.data?.source,
+    data: {
+      data: result.data?.data,
+      source: result.data?.source,
+    }
   });
 });
 
@@ -162,6 +164,146 @@ domains.post('/sync-customer', async (c) => {
     synced: result.data?.synced,
     failed: result.data?.failed,
   });
+});
+
+// Management sub-routes using the generic manageDomain helper
+domains.get('/:id/auth_code', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'get_auth_code', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.put('/:id/auth_code', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'update_auth_code', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.get('/:id/nameservers', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  // Nameservers are part of domain details
+  const result = await domainService.getDomainDetails(parseInt(domainId), user.id, user.role);
+  if (!result.success) return c.json(result, toStatusCode(result.statusCode || 400));
+
+  const d = result.data?.data;
+  const nameservers = [d.nameserver_1, d.nameserver_2, d.nameserver_3, d.nameserver_4, d.nameserver_5].filter(Boolean);
+  return c.json({ success: true, data: nameservers });
+});
+
+domains.put('/:id/nameservers', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'update_nameservers', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.get('/:id/dns', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'get_dns', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.post('/:id/dns', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'update_dns', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.delete('/:id/dns', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'delete_dns_record', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.get('/:id/hosts', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'get_hosts', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.post('/:id/hosts', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'create_host', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.get('/:id/forwarding', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'get_forwarding', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.post('/:id/forwarding', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'create_forwarding', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.get('/:id/whois', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'whois', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.put('/:id/lock', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'set_lock', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+domains.put('/:id/whois-protection', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'set_whois_protection', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
 });
 
 export default domains;

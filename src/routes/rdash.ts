@@ -50,8 +50,42 @@ async function proxyToRdash(endpoint: string, options: RequestInit = {}) {
 // GET /api/rdash/account/profile
 rdash.get('/account/profile', async (c) => {
   try {
-    const { data, status } = await proxyToRdash('/account/profile');
-    return c.json(data, status as any);
+    // Try to get reseller profile first, if not available, return basic info
+    try {
+      const { data, status } = await proxyToRdash('/account/profile');
+      return c.json(data, status as any);
+    } catch (profileError) {
+      // If profile endpoint doesn't exist, try to get basic account info from balance or transactions
+      console.log('[Rdash] Profile endpoint not available, trying balance endpoint');
+      
+      try {
+        const { data: balanceData, status: balanceStatus } = await proxyToRdash('/account/balance');
+        if (balanceStatus === 200 && balanceData.success) {
+          // Return a basic profile structure
+          return c.json({
+            success: true,
+            data: {
+              reseller_id: env.RDASH_RESELLER_ID,
+              balance: balanceData.data?.balance || 0,
+              currency: balanceData.data?.currency || 'IDR',
+              status: 'active'
+            }
+          });
+        }
+      } catch (balanceError) {
+        console.log('[Rdash] Balance endpoint also failed');
+      }
+      
+      // Return minimal profile info
+      return c.json({
+        success: true,
+        data: {
+          reseller_id: env.RDASH_RESELLER_ID,
+          status: 'active',
+          message: 'Profile endpoint not available'
+        }
+      });
+    }
   } catch (error: any) {
     console.error('[Rdash] Profile error:', error);
     return c.json({ success: false, message: error.message }, 500);

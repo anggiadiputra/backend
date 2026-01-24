@@ -171,11 +171,17 @@ class RdashService {
       headers: this.getHeaders(),
     });
 
+    const result = await response.json() as RdashResponse<RdashDomain>;
+
     if (!response.ok) {
-      throw new Error(`Rdash API error: ${response.statusText}`);
+      return {
+        success: false,
+        data: null as any,
+        message: result.message || `Rdash API error: ${response.statusText}`,
+      };
     }
 
-    return response.json() as Promise<RdashResponse<RdashDomain>>;
+    return result;
   }
 
   async getDomainDetails(domainName: string): Promise<RdashResponse<any>> {
@@ -517,8 +523,6 @@ class RdashService {
         formData.append('buy_whois_protection', 'true');
       }
 
-      console.log('[Rdash] Renewing domain:', data.domain_id, 'period:', data.period, 'current_date:', data.current_date);
-
       const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${data.domain_id}/renew`, {
         method: 'POST',
         headers: {
@@ -529,8 +533,6 @@ class RdashService {
       });
 
       const result = await response.json() as RdashResponse<RdashDomain>;
-      console.log('[Rdash] Renew domain response:', result);
-
       if (!response.ok) {
         return {
           success: false,
@@ -547,6 +549,246 @@ class RdashService {
         message: 'Failed to renew domain',
       };
     }
+  }
+
+  // Auth Code
+  async getAuthCode(domainId: number): Promise<RdashResponse<{ auth_code: string }>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/auth_code`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  async updateAuthCode(domainId: number, authCode: string): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    formData.append('auth_code', authCode);
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/auth_code`, {
+      method: 'PUT',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[RdashService] updateAuthCode failed: ${response.status} ${text}`);
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { success: false, data: null, message: `Rdash error: ${text}` };
+      }
+    }
+
+    return response.json();
+  }
+
+  // Registrar Lock
+  async setRegistrarLock(domainId: number, locked: boolean, reason?: string): Promise<RdashResponse<any>> {
+    if (locked) {
+      const formData = new URLSearchParams();
+      if (reason) formData.append('reason', reason);
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/registrar-locked`, {
+        method: 'PUT',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+      return response.json();
+    } else {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/registrar-locked`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+      return response.json();
+    }
+  }
+
+  // WHOIS Protection
+  async getWhoisProtection(domainId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/whois-protection`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  async setWhoisProtection(domainId: number, enabled: boolean): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/whois-protection`, {
+      method: enabled ? 'PUT' : 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  // Nameservers
+  async updateNameservers(domainId: number, nameservers: string[]): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    nameservers.forEach((ns, index) => {
+      if (ns) formData.append(`nameserver[${index}]`, ns);
+    });
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}`, {
+      method: 'PUT',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  // DNS Records
+  async getDnsRecords(domainId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  async updateDnsRecords(domainId: number, records: Array<{ name: string, type: string, content: string, ttl: number }>): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    records.forEach((record, index) => {
+      formData.append(`records[${index}][name]`, record.name);
+      formData.append(`records[${index}][type]`, record.type);
+      formData.append(`records[${index}][content]`, record.content);
+      formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
+    });
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
+      method: 'POST',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  async deleteDnsRecord(domainId: number, record: { name: string, type: string, content: string }): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    formData.append('name', record.name);
+    formData.append('type', record.type);
+    formData.append('content', record.content);
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/record`, {
+      method: 'DELETE',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  // Child Nameservers (Hosts)
+  async getHosts(domainId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/hosts?domain_id=${domainId}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  async createHost(domainId: number, data: { hostname: string, ip_address: string, customer_id?: number }): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    formData.append('hostname', data.hostname);
+    formData.append('ip_address', data.ip_address);
+    if (data.customer_id) formData.append('customer_id', data.customer_id.toString());
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/hosts`, {
+      method: 'POST',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  async updateHost(domainId: number, hostId: number, data: { hostname?: string, ip_address?: string, old_ip_address?: string }): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    if (data.hostname) formData.append('hostname', data.hostname);
+    if (data.ip_address) formData.append('ip_address', data.ip_address);
+    if (data.old_ip_address) formData.append('old_ip_address', data.old_ip_address);
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/hosts/${hostId}`, {
+      method: 'PUT',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  async deleteHost(domainId: number, hostId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/hosts/${hostId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  // Forwarding
+  async getForwarding(domainId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/forwarding`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  async createForwarding(domainId: number, data: { from: string, to: string }): Promise<RdashResponse<any>> {
+    const formData = new URLSearchParams();
+    formData.append('from', data.from);
+    formData.append('to', data.to);
+
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/forwarding`, {
+      method: 'POST',
+      headers: {
+        ...this.getHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: formData.toString(),
+    });
+    return response.json();
+  }
+
+  async deleteForwarding(domainId: number, forwardingId: number): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/forwarding/${forwardingId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  // DNSSEC
+  async setDnssec(domainId: number, enabled: boolean): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/sec`, {
+      method: enabled ? 'POST' : 'DELETE',
+      headers: this.getHeaders(),
+    });
+    return response.json();
+  }
+
+  // WHOIS raw
+  async whoisLookup(domain: string): Promise<RdashResponse<any>> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/whois?domain=${encodeURIComponent(domain)}`, {
+      method: 'GET',
+      headers: this.getHeaders(),
+    });
+    return response.json();
   }
 }
 

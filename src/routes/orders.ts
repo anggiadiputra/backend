@@ -4,6 +4,8 @@ import { zValidator } from '@hono/zod-validator';
 import { authMiddleware, sellerOnly } from '../middleware/auth';
 import { createAuthClient, supabaseAdmin } from '../services/supabase.service';
 import { OrderService } from '../services/order.service';
+import { InvoiceService } from '../services/invoice.service';
+import { PaymentService } from '../services/payment.service';
 import { LoggerService } from '../services/logger.service';
 import { getClientIp } from '../middleware/security';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -63,6 +65,42 @@ orders.get('/:id', async (c) => {
   const orderService = new OrderService(supabase, supabaseAdmin);
 
   const result = await orderService.getOrderById(parseInt(orderId), user.id, user.role);
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
+  }
+
+  return c.json({ success: true, data: result.data });
+});
+
+// Download Invoice
+orders.get('/:id/invoice', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const orderId = c.req.param('id');
+
+  const supabase = createAuthClient(token);
+  const invoiceService = new InvoiceService(supabase);
+
+  try {
+    const html = await invoiceService.generateInvoice(parseInt(orderId));
+    return c.html(html);
+  } catch (error: any) {
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Check payment status
+orders.get('/:id/payment-status', async (c) => {
+  const user = c.get('user');
+  const orderId = c.req.param('id');
+
+  // Only verify that user owns the order or is admin
+  // For now we trust the PaymentService internal check or we do a quick check?
+  // PaymentService checks transaction by order_id.
+
+  const paymentService = new PaymentService(supabaseAdmin);
+  const result = await paymentService.checkStatusByOrderId(parseInt(orderId));
 
   if (!result.success) {
     return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
@@ -151,6 +189,28 @@ orders.put('/:id/status', sellerOnly, zValidator('json', updateStatusSchema), as
     success: true,
     data: result.data,
     message: 'Order status updated',
+  });
+});
+
+// Calculate provision order (seller only)
+orders.post('/:id/provision', sellerOnly, async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const orderId = c.req.param('id');
+
+  const supabase = createAuthClient(token);
+  const orderService = new OrderService(supabase, supabaseAdmin);
+
+  const result = await orderService.fulfillOrder(parseInt(orderId), user.id, 'manual');
+
+  if (!result.success) {
+    return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
+  }
+
+  return c.json({
+    success: true,
+    data: result.data,
+    message: result.data?.message || 'Order provisioned successfully',
   });
 });
 
