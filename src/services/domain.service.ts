@@ -627,6 +627,15 @@ export class DomainService {
                 case 'delete_forwarding':
                     result = await rdashService.deleteForwarding(domainId, data.forwarding_id);
                     break;
+                case 'get_dnssec':
+                    result = await rdashService.getDnssec(domainId);
+                    break;
+                case 'add_dnssec':
+                    result = await rdashService.addDnssec(domainId, data);
+                    break;
+                case 'delete_dnssec':
+                    result = await rdashService.deleteDnssec(domainId, data.dnssec_id);
+                    break;
                 case 'set_dnssec':
                     result = await rdashService.setDnssec(domainId, data.enabled);
                     break;

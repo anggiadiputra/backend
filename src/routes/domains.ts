@@ -289,6 +289,38 @@ domains.get('/:id/whois', async (c) => {
   return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
 });
 
+// DNSSEC Routes
+domains.get('/:id/dnssec', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'get_dnssec', {});
+  // Always return 200 to prevent browser console errors
+  return c.json(result, 200);
+});
+
+domains.post('/:id/dnssec', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'add_dnssec', body);
+  // Always return 200 to prevent browser console errors
+  return c.json(result, 200);
+});
+
+domains.delete('/:id/dnssec/:dnssecId', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const dnssecId = c.req.param('dnssecId');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'delete_dnssec', { dnssec_id: parseInt(dnssecId) });
+  // Always return 200 to prevent browser console errors
+  return c.json(result, 200);
+});
 domains.put('/:id/lock', async (c) => {
   const user = c.get('user');
   const token = c.get('token');

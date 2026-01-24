@@ -786,7 +786,7 @@ class RdashService {
       records.forEach((record, index) => {
         formData.append(`records[${index}][name]`, record.name);
         formData.append(`records[${index}][type]`, record.type);
-        formData.append(`records[${index}][value]`, record.content);
+        formData.append(`records[${index}][content]`, record.content);
         formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
         if (record.priority !== undefined) {
           formData.append(`records[${index}][priority]`, record.priority.toString());
@@ -818,7 +818,7 @@ class RdashService {
       const formData = new URLSearchParams();
       formData.append('name', record.name);
       formData.append('type', record.type);
-      formData.append('value', record.content);
+      formData.append('content', record.content);
 
       console.log(`[RdashService] deleteDnsRecord request:`, formData.toString());
 
@@ -923,9 +923,72 @@ class RdashService {
     return response.json() as Promise<RdashResponse<any>>;
   }
 
-  // DNSSEC
+  // DNSSEC - GET /domains/{domain_id}/dnssec
+  async getDnssec(domainId: number): Promise<RdashResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dnssec`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] getDnssec response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] getDnssec error:', error);
+      return { success: false, data: null, message: error.message };
+    }
+  }
+
+  // DNSSEC - POST /domains/{domain_id}/dnssec (Add DNSSEC)
+  async addDnssec(domainId: number, data: { keytag: number, algorithm: number, digesttype: number, digest: string }): Promise<RdashResponse<any>> {
+    try {
+      const formData = new URLSearchParams();
+      formData.append('keytag', data.keytag.toString());
+      formData.append('algorithm', data.algorithm.toString());
+      formData.append('digesttype', data.digesttype.toString());
+      formData.append('digest', data.digest);
+
+      console.log(`[RdashService] addDnssec request:`, formData.toString());
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dnssec`, {
+        method: 'POST',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] addDnssec response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] addDnssec error:', error);
+      return { success: false, data: null, message: error.message };
+    }
+  }
+
+  // DNSSEC - DELETE /domains/{domain_id}/dnssec/{dnssec_id}
+  async deleteDnssec(domainId: number, dnssecId: number): Promise<RdashResponse<any>> {
+    try {
+      console.log(`[RdashService] deleteDnssec: domainId=${domainId}, dnssecId=${dnssecId}`);
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dnssec/${dnssecId}`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] deleteDnssec response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] deleteDnssec error:', error);
+      return { success: false, data: null, message: error.message };
+    }
+  }
+
+  // Legacy setDnssec - kept for backward compatibility
   async setDnssec(domainId: number, enabled: boolean): Promise<RdashResponse<any>> {
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/sec`, {
+    // This is deprecated - use getDnssec, addDnssec, deleteDnssec instead
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dnssec`, {
       method: enabled ? 'POST' : 'DELETE',
       headers: this.getHeaders(),
     });
