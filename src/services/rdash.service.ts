@@ -763,14 +763,26 @@ class RdashService {
   }
 
   // DNS Records
-  // GET /domains/{domain_id}/dns/list - List all DNS records
+  // GET /domains/{domain_id}/dns or /domains/{domain_id}/dns/list
   async getDnsRecords(domainId: number): Promise<RdashResponse<any>> {
     try {
-      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/list`, {
+      // Try /dns first (some API versions use this)
+      let response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
         method: 'GET',
         headers: this.getHeaders(),
       });
-      const result = await response.json() as RdashResponse<any>;
+      let result = await response.json() as RdashResponse<any>;
+
+      // If /dns fails, try /dns/list
+      if (!result.success && result.message?.includes('not found')) {
+        console.log('[RdashService] /dns failed, trying /dns/list');
+        response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/list`, {
+          method: 'GET',
+          headers: this.getHeaders(),
+        });
+        result = await response.json() as RdashResponse<any>;
+      }
+
       console.log(`[RdashService] getDnsRecords response:`, JSON.stringify(result, null, 2));
       return result;
     } catch (error: any) {
