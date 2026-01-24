@@ -784,7 +784,7 @@ class RdashService {
     try {
       const formData = new URLSearchParams();
       records.forEach((record, index) => {
-        formData.append(`records[${index}][host]`, record.name);
+        formData.append(`records[${index}][name]`, record.name);
         formData.append(`records[${index}][type]`, record.type);
         formData.append(`records[${index}][value]`, record.content);
         formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
@@ -816,7 +816,7 @@ class RdashService {
   async deleteDnsRecord(domainId: number, record: { name: string, type: string, content: string }): Promise<RdashResponse<any>> {
     try {
       const formData = new URLSearchParams();
-      formData.append('host', record.name);
+      formData.append('name', record.name);
       formData.append('type', record.type);
       formData.append('value', record.content);
 
