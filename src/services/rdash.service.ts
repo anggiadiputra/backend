@@ -267,7 +267,7 @@ class RdashService {
       throw new Error(`Rdash API error: ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<any>;
   }
 
   /**
@@ -557,7 +557,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<{ auth_code: string }>>;
   }
 
   async updateAuthCode(domainId: number, authCode: string): Promise<RdashResponse<any>> {
@@ -582,7 +582,7 @@ class RdashService {
       }
     }
 
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // Registrar Lock
@@ -598,13 +598,13 @@ class RdashService {
         },
         body: formData.toString(),
       });
-      return response.json();
+      return response.json() as Promise<RdashResponse<any>>;
     } else {
       const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/registrar-locked`, {
         method: 'DELETE',
         headers: this.getHeaders(),
       });
-      return response.json();
+      return response.json() as Promise<RdashResponse<any>>;
     }
   }
 
@@ -614,7 +614,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async setWhoisProtection(domainId: number, enabled: boolean): Promise<RdashResponse<any>> {
@@ -622,7 +622,7 @@ class RdashService {
       method: enabled ? 'PUT' : 'DELETE',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // Nameservers
@@ -640,7 +640,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // DNS Records
@@ -649,7 +649,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async updateDnsRecords(domainId: number, records: Array<{ name: string, type: string, content: string, ttl: number }>): Promise<RdashResponse<any>> {
@@ -669,7 +669,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async deleteDnsRecord(domainId: number, record: { name: string, type: string, content: string }): Promise<RdashResponse<any>> {
@@ -686,7 +686,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // Child Nameservers (Hosts)
@@ -695,7 +695,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async createHost(domainId: number, data: { hostname: string, ip_address: string, customer_id?: number }): Promise<RdashResponse<any>> {
@@ -712,7 +712,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async updateHost(domainId: number, hostId: number, data: { hostname?: string, ip_address?: string, old_ip_address?: string }): Promise<RdashResponse<any>> {
@@ -729,7 +729,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async deleteHost(domainId: number, hostId: number): Promise<RdashResponse<any>> {
@@ -737,7 +737,7 @@ class RdashService {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // Forwarding
@@ -746,7 +746,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async createForwarding(domainId: number, data: { from: string, to: string }): Promise<RdashResponse<any>> {
@@ -762,7 +762,7 @@ class RdashService {
       },
       body: formData.toString(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   async deleteForwarding(domainId: number, forwardingId: number): Promise<RdashResponse<any>> {
@@ -770,7 +770,7 @@ class RdashService {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // DNSSEC
@@ -779,7 +779,7 @@ class RdashService {
       method: enabled ? 'POST' : 'DELETE',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 
   // WHOIS raw
@@ -788,7 +788,7 @@ class RdashService {
       method: 'GET',
       headers: this.getHeaders(),
     });
-    return response.json();
+    return response.json() as Promise<RdashResponse<any>>;
   }
 }
 

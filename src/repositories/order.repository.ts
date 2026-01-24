@@ -5,9 +5,17 @@ export interface Order {
     id: number;
     seller_id: string;
     customer_id: number;
-    status: 'pending' | 'processing' | 'completed' | 'cancelled' | 'refunded';
+    status: 'pending' | 'processing' | 'paid' | 'completed' | 'cancelled' | 'refunded';
     total_amount: number;
     notes?: string;
+    domain_name?: string;
+    action?: 'register' | 'renew' | 'transfer';
+    period?: number;
+    auth_code?: string;
+    whois_protection?: boolean;
+    rdash_customer_id?: number;
+    rdash_domain_id?: number;
+    renew_current_date?: string;
     created_at: string;
     updated_at?: string;
 }

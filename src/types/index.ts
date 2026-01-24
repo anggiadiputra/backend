@@ -98,6 +98,7 @@ export interface RdashDomain {
   status: string;
   status_label: string;
   expired_at: string;
+  customer_id?: number;
   nameserver_1: string | null;
   nameserver_2: string | null;
   nameserver_3: string | null;

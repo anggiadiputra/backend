@@ -246,8 +246,8 @@ export class OrderService {
         try {
             if (order.action === 'transfer') {
                 rdashResult = await rdashService.transferDomain({
-                    domain: order.domain_name,
-                    customer_id: order.rdash_customer_id,
+                    domain: order.domain_name!,
+                    customer_id: order.rdash_customer_id!,
                     auth_code: order.auth_code || '',
                     period: order.period || 1,
                     whois_protection: order.whois_protection || false,
@@ -267,8 +267,8 @@ export class OrderService {
             } else {
                 // Register
                 rdashResult = await rdashService.registerDomain({
-                    domain: order.domain_name,
-                    customer_id: order.rdash_customer_id,
+                    domain: order.domain_name!,
+                    customer_id: order.rdash_customer_id!,
                     period: order.period || 1,
                     whois_protection: order.whois_protection || false,
                 });
@@ -276,7 +276,7 @@ export class OrderService {
 
             const updateData: any = {
                 updated_at: new Date().toISOString(),
-                status: rdashResult.success ? 'completed' : (order.status === 'paid' ? 'paid' : 'processing'),
+                status: rdashResult.success ? 'completed' : ((order.status as string) === 'paid' ? 'paid' : 'processing'),
                 notes: order.notes ? `${order.notes}\n` : '' + `[${new Date().toISOString()}] Provisioning: ${rdashResult.success ? 'Success' : 'Failed - ' + rdashResult.message}`
             };
 
@@ -286,7 +286,7 @@ export class OrderService {
 
                 // Save domain to rdash_domains table
                 if (order.action !== 'renew' && rdashResult.data) {
-                    await this.saveDomain(rdashResult.data, order.seller_id, order.rdash_customer_id);
+                    await this.saveDomain(rdashResult.data, order.seller_id, order.rdash_customer_id!);
                 }
             } else {
                 updateData.rdash_error = rdashResult.message;
@@ -300,7 +300,7 @@ export class OrderService {
                 action: 'fulfill_order',
                 resource: `order/${orderId}`,
                 payload: { source, rdash_success: rdashResult.success, message: rdashResult.message },
-                status: rdashResult.success ? 'success' : 'error'
+                status: rdashResult.success ? 'success' : 'failure'
             });
 
             if (!rdashResult.success) {
