@@ -763,49 +763,80 @@ class RdashService {
   }
 
   // DNS Records
+  // GET /domains/{domain_id}/dns/list - List all DNS records
   async getDnsRecords(domainId: number): Promise<RdashResponse<any>> {
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-    return response.json() as Promise<RdashResponse<any>>;
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/list`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] getDnsRecords response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] getDnsRecords error:', error);
+      return { success: false, data: null, message: error.message };
+    }
   }
 
-  async updateDnsRecords(domainId: number, records: Array<{ name: string, type: string, content: string, ttl: number }>): Promise<RdashResponse<any>> {
-    const formData = new URLSearchParams();
-    records.forEach((record, index) => {
-      formData.append(`records[${index}][host]`, record.name);
-      formData.append(`records[${index}][type]`, record.type);
-      formData.append(`records[${index}][value]`, record.content);
-      formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
-    });
+  // POST /domains/{domain_id}/dns - Create/Update DNS records
+  async updateDnsRecords(domainId: number, records: Array<{ name: string, type: string, content: string, ttl?: number, priority?: number }>): Promise<RdashResponse<any>> {
+    try {
+      const formData = new URLSearchParams();
+      records.forEach((record, index) => {
+        formData.append(`records[${index}][host]`, record.name);
+        formData.append(`records[${index}][type]`, record.type);
+        formData.append(`records[${index}][value]`, record.content);
+        formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
+        if (record.priority !== undefined) {
+          formData.append(`records[${index}][priority]`, record.priority.toString());
+        }
+      });
 
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
-      method: 'POST',
-      headers: {
-        ...this.getHeaders(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
-    return response.json() as Promise<RdashResponse<any>>;
+      console.log(`[RdashService] updateDnsRecords request:`, formData.toString());
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
+        method: 'POST',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] updateDnsRecords response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] updateDnsRecords error:', error);
+      return { success: false, data: null, message: error.message };
+    }
   }
 
+  // DELETE /domains/{domain_id}/dns - Delete DNS record or entire zone
   async deleteDnsRecord(domainId: number, record: { name: string, type: string, content: string }): Promise<RdashResponse<any>> {
-    const formData = new URLSearchParams();
-    formData.append('host', record.name);
-    formData.append('type', record.type);
-    formData.append('value', record.content);
+    try {
+      const formData = new URLSearchParams();
+      formData.append('host', record.name);
+      formData.append('type', record.type);
+      formData.append('value', record.content);
 
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/record`, {
-      method: 'DELETE',
-      headers: {
-        ...this.getHeaders(),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
-    return response.json() as Promise<RdashResponse<any>>;
+      console.log(`[RdashService] deleteDnsRecord request:`, formData.toString());
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns`, {
+        method: 'DELETE',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+      const result = await response.json() as RdashResponse<any>;
+      console.log(`[RdashService] deleteDnsRecord response:`, JSON.stringify(result, null, 2));
+      return result;
+    } catch (error: any) {
+      console.error('[RdashService] deleteDnsRecord error:', error);
+      return { success: false, data: null, message: error.message };
+    }
   }
 
   // Child Nameservers (Hosts)
