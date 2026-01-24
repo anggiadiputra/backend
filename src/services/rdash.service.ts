@@ -172,27 +172,29 @@ class RdashService {
         headers: this.getHeaders(),
       });
 
-      const result = await response.json() as RdashResponse<RdashDomain>;
+      const result = await response.json() as RdashResponse<any>;
 
       // Debug logging
       console.log(`[RdashService] getDomain ${domainId} raw response:`, JSON.stringify(result.data, null, 2));
 
       if (result.success && result.data) {
-        const status = typeof result.data.status === 'string' ? result.data.status.toLowerCase() : '';
-        console.log(`[RdashService] Domain ${domainId} status string: "${result.data.status}"`);
-        console.log(`[RdashService] Domain ${domainId} is_locked from API: ${result.data.is_locked}`);
+        // Rdash API returns:
+        // - is_locked: 1/0 = Theft Protection (clientTransferProhibited)
+        // - is_registrar_locked: 1/0 = Registrar Lock (clientUpdateProhibited)
 
-        // Map is_locked (API) to is_transfer_locked (Frontend)
-        // We prioritze checking the status string for EPP codes which is more reliable.
-        // 'clientTransferProhibited' = Theft Protection (Transfer Lock)
-        const hasTransferProhibited = status.includes('clienttransferprohibited');
-        result.data.is_transfer_locked = hasTransferProhibited || !!result.data.is_locked;
-        console.log(`[RdashService] Domain ${domainId} clientTransferProhibited in status: ${hasTransferProhibited}, final is_transfer_locked: ${result.data.is_transfer_locked}`);
+        const apiIsLocked = result.data.is_locked;
+        const apiIsRegistrarLocked = result.data.is_registrar_locked;
 
-        // Map Registrar Lock (is_locked for Frontend) based on status string
-        // 'clientUpdateProhibited' or 'clientDeleteProhibited' = Registrar Lock (Update Lock)
-        const hasUpdateProhibited = status.includes('clientupdateprohibited') || status.includes('clientdeleteprohibited');
-        result.data.is_locked = hasUpdateProhibited;
+        console.log(`[RdashService] Domain ${domainId} is_locked from API: ${apiIsLocked}`);
+        console.log(`[RdashService] Domain ${domainId} is_registrar_locked from API: ${apiIsRegistrarLocked}`);
+
+        // Map is_locked (API) to is_transfer_locked (Frontend) - Theft Protection
+        result.data.is_transfer_locked = apiIsLocked === 1 || apiIsLocked === true;
+
+        // Map is_registrar_locked (API) to is_locked (Frontend) - Registrar Lock
+        result.data.is_locked = apiIsRegistrarLocked === 1 || apiIsRegistrarLocked === true;
+
+        console.log(`[RdashService] Domain ${domainId} final is_transfer_locked (Theft Protection): ${result.data.is_transfer_locked}`);
         console.log(`[RdashService] Domain ${domainId} final is_locked (Registrar Lock): ${result.data.is_locked}`);
       }
 
