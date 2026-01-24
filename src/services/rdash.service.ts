@@ -632,7 +632,7 @@ class RdashService {
       if (ns) formData.append(`nameserver[${index}]`, ns);
     });
 
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/ns`, {
       method: 'PUT',
       headers: {
         ...this.getHeaders(),
@@ -655,9 +655,9 @@ class RdashService {
   async updateDnsRecords(domainId: number, records: Array<{ name: string, type: string, content: string, ttl: number }>): Promise<RdashResponse<any>> {
     const formData = new URLSearchParams();
     records.forEach((record, index) => {
-      formData.append(`records[${index}][name]`, record.name);
+      formData.append(`records[${index}][host]`, record.name);
       formData.append(`records[${index}][type]`, record.type);
-      formData.append(`records[${index}][content]`, record.content);
+      formData.append(`records[${index}][value]`, record.content);
       formData.append(`records[${index}][ttl]`, (record.ttl || 3600).toString());
     });
 
@@ -674,9 +674,9 @@ class RdashService {
 
   async deleteDnsRecord(domainId: number, record: { name: string, type: string, content: string }): Promise<RdashResponse<any>> {
     const formData = new URLSearchParams();
-    formData.append('name', record.name);
+    formData.append('host', record.name);
     formData.append('type', record.type);
-    formData.append('content', record.content);
+    formData.append('value', record.content);
 
     const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/dns/record`, {
       method: 'DELETE',
