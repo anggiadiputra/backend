@@ -303,7 +303,9 @@ domains.put('/:id/theft-protection', async (c) => {
   const body = await c.req.json();
   const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
   const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'set_theft_protection', body);
-  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+  // Always return 200 to prevent browser console errors, but success: false in body
+  // This is because some TLDs don't allow disabling theft protection
+  return c.json(result, 200);
 });
 
 domains.put('/:id/whois-protection', async (c) => {
