@@ -10,6 +10,7 @@ interface RdashResponse<T> {
 interface RdashListResponse<T> {
   success: boolean;
   data: T[];
+  message?: string;
   meta: {
     total: number;
     page: number;
