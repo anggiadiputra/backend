@@ -1017,8 +1017,9 @@ class RdashService {
   }
 
   // Update domain contact (registrant, admin, tech, billing)
-  // Uses /contacts/:contact_id endpoint when contact_id is provided
+  // Rdash API: PUT /customers/{customer_id}/contacts/{contact_id}
   async updateDomainContact(domainId: number, contactType: string, contactData: {
+    customer_id?: number;
     contact_id?: string | number;
     name?: string;
     email?: string;
@@ -1030,38 +1031,49 @@ class RdashService {
     country_code?: string;
     postal_code?: string;
     voice?: string;
+    fax?: string;
   }): Promise<RdashResponse<any>> {
     try {
-      // Build form data
-      const formData = new URLSearchParams();
+      // Map contact type to Rdash label values
+      const labelMap: Record<string, string> = {
+        'registrant': 'Registrant',
+        'admin': 'Admin',
+        'technical': 'Technical',
+        'tech': 'Technical',
+        'billing': 'Billing'
+      };
+      const label = labelMap[contactType] || 'Default';
 
+      // Build form data with all required fields
+      const formData = new URLSearchParams();
+      formData.append('label', label);
+
+      // Required fields
       if (contactData.name) formData.append('name', contactData.name);
       if (contactData.email) formData.append('email', contactData.email);
       if (contactData.organization) formData.append('organization', contactData.organization);
       if (contactData.street_1) formData.append('street_1', contactData.street_1);
-      if (contactData.street_2) formData.append('street_2', contactData.street_2);
       if (contactData.city) formData.append('city', contactData.city);
       if (contactData.state) formData.append('state', contactData.state);
       if (contactData.country_code) formData.append('country_code', contactData.country_code);
       if (contactData.postal_code) formData.append('postal_code', contactData.postal_code);
       if (contactData.voice) formData.append('voice', contactData.voice.replace(/[^\d+]/g, ''));
 
-      // Determine endpoint - use /contacts/:contact_id if contact_id is available
-      let endpoint: string;
-      if (contactData.contact_id) {
-        endpoint = `${this.baseUrl}/contacts/${contactData.contact_id}`;
-      } else {
-        // Fallback to domains/:id/contacts with contact_type
-        endpoint = `${this.baseUrl}/domains/${domainId}/contacts`;
-        const typeMap: Record<string, string> = {
-          'registrant': 'registrant_contact',
-          'admin': 'admin_contact',
-          'technical': 'tech_contact',
-          'tech': 'tech_contact',
-          'billing': 'billing_contact'
+      // Optional fields
+      if (contactData.street_2) formData.append('street_2', contactData.street_2);
+      if (contactData.fax) formData.append('fax', contactData.fax);
+
+      // Validate required path parameters
+      if (!contactData.customer_id || !contactData.contact_id) {
+        console.error('[RdashService] Missing customer_id or contact_id for contact update');
+        return {
+          success: false,
+          data: null,
+          message: 'Missing customer_id or contact_id for contact update',
         };
-        formData.append('contact_type', typeMap[contactType] || contactType);
       }
+
+      const endpoint = `${this.baseUrl}/customers/${contactData.customer_id}/contacts/${contactData.contact_id}`;
 
       console.log(`[RdashService] Updating contact via ${endpoint}`);
       console.log(`[RdashService] Contact data:`, formData.toString());
