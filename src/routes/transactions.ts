@@ -13,21 +13,25 @@ transactions.use('*', authMiddleware);
 const listTransactionsSchema = z.object({
   page: z.string().optional().default('1'),
   limit: z.string().optional().default('10'),
-  type: z.string().optional(),
+  transaction: z.string().optional(),
   tld: z.string().optional(),
-  date_range: z.string().optional(),
+  date_range: z.string(), // Required
+  description: z.string().optional(),
+  amount_range: z.string().optional(),
 });
 
 transactions.get('/rdash', sellerOnly, zValidator('query', listTransactionsSchema), async (c) => {
-  const { page, limit, type, tld, date_range } = c.req.valid('query');
+  const { page, limit, transaction, tld, date_range, description, amount_range } = c.req.valid('query');
 
   try {
     const response = await rdashService.getTransactions({
       page: parseInt(page),
       limit: parseInt(limit),
-      type: type ? parseInt(type) : undefined,
+      transaction,
       tld,
       date_range,
+      description,
+      amount_range,
     });
 
     return c.json({

@@ -229,16 +229,20 @@ class RdashService {
   async getTransactions(params: {
     page?: number;
     limit?: number;
-    type?: number;
+    transaction?: string; // Changed from type to transaction
     tld?: string;
-    date_range?: string;
+    date_range: string; // Required by API
+    description?: string;
+    amount_range?: string;
   }): Promise<RdashListResponse<unknown>> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.append('page', params.page.toString());
     if (params.limit) searchParams.append('limit', params.limit.toString());
-    if (params.type) searchParams.append('type', params.type.toString());
+    if (params.transaction) searchParams.append('transaction', params.transaction);
     if (params.tld) searchParams.append('tld', params.tld);
     if (params.date_range) searchParams.append('date_range', params.date_range);
+    if (params.description) searchParams.append('description', params.description);
+    if (params.amount_range) searchParams.append('amount_range', params.amount_range);
 
     const response = await this.fetchWithTimeout(`${this.baseUrl}/account/transactions?${searchParams}`, {
       method: 'GET',
