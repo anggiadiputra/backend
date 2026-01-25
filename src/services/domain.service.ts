@@ -645,6 +645,12 @@ export class DomainService {
                 case 'whois':
                     result = await rdashService.whoisLookup(accessCheck.data!.name);
                     break;
+                case 'suspend':
+                    result = await rdashService.suspendDomain(domainId, data.reason, data.type);
+                    break;
+                case 'unsuspend':
+                    result = await rdashService.unsuspendDomain(domainId);
+                    break;
                 default:
                     return { success: false, error: 'Invalid action', statusCode: 400 };
             }

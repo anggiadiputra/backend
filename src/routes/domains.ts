@@ -368,4 +368,25 @@ domains.put('/:id/contacts', async (c) => {
   return c.json(result, 200);
 });
 
+// Suspend Domain
+domains.put('/:id/suspended', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'suspend', body);
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
+// Unsuspend Domain
+domains.delete('/:id/suspended', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'unsuspend', {});
+  return c.json(result, toStatusCode(result.statusCode || (result.success ? 200 : 400)));
+});
+
 export default domains;

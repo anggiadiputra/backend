@@ -1108,6 +1108,72 @@ class RdashService {
       };
     }
   }
+
+  // Suspend Domain
+  // PUT /domains/{domain_id}/suspended
+  async suspendDomain(domainId: number, reason: string, type: number = 1): Promise<RdashResponse<any>> {
+    try {
+      const formData = new URLSearchParams();
+      formData.append('type', type.toString());
+      formData.append('reason', reason);
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/suspended`, {
+        method: 'PUT',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+
+      const result = await response.json() as RdashResponse<any>;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          data: null,
+          message: result.message || 'Failed to suspend domain',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      return {
+        success: false,
+        data: null,
+        message: error.message || 'Failed to suspend domain',
+      };
+    }
+  }
+
+  // Unsuspend Domain
+  // DELETE /domains/{domain_id}/suspended
+  async unsuspendDomain(domainId: number): Promise<RdashResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/suspended`, {
+        method: 'DELETE',
+        headers: this.getHeaders(),
+      });
+
+      const result = await response.json() as RdashResponse<any>;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          data: null,
+          message: result.message || 'Failed to unsuspend domain',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      return {
+        success: false,
+        data: null,
+        message: error.message || 'Failed to unsuspend domain',
+      };
+    }
+  }
 }
 
 
