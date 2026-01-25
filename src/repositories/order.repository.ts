@@ -2,22 +2,27 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { BaseRepository, FindOptions, PaginatedResult } from './base.repository';
 
 export interface Order {
-    id: number;
+    id: string;
     seller_id: string;
-    customer_id: number;
-    status: 'pending' | 'processing' | 'paid' | 'completed' | 'cancelled' | 'refunded';
-    total_amount: number;
+    customer_id: string;
+    status: 'pending' | 'processing' | 'paid' | 'completed' | 'failed' | 'cancelled';
+    total_price: number;
     notes?: string;
-    domain_name?: string;
-    action?: 'register' | 'renew' | 'transfer';
-    period?: number;
-    auth_code?: string;
-    whois_protection?: boolean;
-    rdash_customer_id?: number;
-    rdash_domain_id?: number;
-    renew_current_date?: string;
     created_at: string;
     updated_at?: string;
+    completed_at?: string;
+    payment_method?: string;
+    duitku_reference?: string;
+    base_price?: number;
+    markup_percentage?: number;
+    markup_amount?: number;
+    seller_margin?: number;
+    auth_code?: string;
+    rdash_customer_id?: number;
+    rdash_domain_id?: number;
+    whois_protection?: boolean;
+    rdash_response?: any;
+    rdash_error?: string;
 }
 
 export interface OrderItem {
@@ -34,6 +39,12 @@ export interface OrderItem {
 export interface OrderWithItems extends Order {
     order_items?: OrderItem[];
     customers?: { name: string; email: string };
+    payment_transactions?: {
+        invoice_number: string;
+        payment_name: string;
+        payment_code: string;
+        status: string;
+    }[];
 }
 
 export class OrderRepository extends BaseRepository<Order> {
@@ -41,10 +52,10 @@ export class OrderRepository extends BaseRepository<Order> {
         super(supabase, 'orders');
     }
 
-    async findByIdWithDetails(orderId: number): Promise<OrderWithItems | null> {
+    async findByIdWithDetails(orderId: string): Promise<OrderWithItems | null> {
         const { data, error } = await this.supabase
             .from(this.tableName)
-            .select('*, customers(name, email), order_items(*)')
+            .select('*, customers(name, email), order_items(*), payment_transactions(invoice_number, payment_name, payment_code, status)')
             .eq('id', orderId)
             .single();
 
@@ -56,7 +67,7 @@ export class OrderRepository extends BaseRepository<Order> {
     }
 
     async findByCustomerId(
-        customerId: number,
+        customerId: string,
         options: FindOptions = {}
     ): Promise<PaginatedResult<OrderWithItems>> {
         const {
@@ -67,7 +78,7 @@ export class OrderRepository extends BaseRepository<Order> {
 
         let query = this.supabase
             .from(this.tableName)
-            .select('*, customers(name, email)', { count: 'exact' })
+            .select('*, customers(name, email), payment_transactions(invoice_number, payment_name)', { count: 'exact' })
             .eq('customer_id', customerId);
 
         // Apply additional filters (like status)
@@ -108,7 +119,7 @@ export class OrderRepository extends BaseRepository<Order> {
 
         let query = this.supabase
             .from(this.tableName)
-            .select('*, customers(name, email)', { count: 'exact' })
+            .select('*, customers(name, email), payment_transactions(invoice_number, payment_name)', { count: 'exact' })
             .eq('seller_id', sellerId);
 
         // Apply additional filters
@@ -175,7 +186,7 @@ export class OrderRepository extends BaseRepository<Order> {
     }
 
     async updateStatus(
-        orderId: number,
+        orderId: string,
         status: Order['status']
     ): Promise<Order> {
         return this.update(orderId, { status } as Partial<Order>);

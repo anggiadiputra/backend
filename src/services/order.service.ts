@@ -11,7 +11,7 @@ export interface ServiceResult<T> {
 }
 
 export interface CreateOrderData {
-    customer_id: number;
+    customer_id: string;
     items: Array<{
         domain_name: string;
         tld: string;
@@ -39,7 +39,7 @@ export class OrderService {
     async getOrdersByRole(
         userId: string,
         userRole: 'admin' | 'seller' | 'customer',
-        options: { page?: number; limit?: number; status?: string; customer_id?: number }
+        options: { page?: number; limit?: number; status?: string; customer_id?: string }
     ): Promise<ServiceResult<PaginatedResult<OrderWithItems>>> {
         try {
             const filters: Record<string, any> = {};
@@ -71,7 +71,7 @@ export class OrderService {
                     };
                 }
 
-                const result = await this.orderRepo.findByCustomerId(customer.id, {
+                const result = await this.orderRepo.findByCustomerId(customer.user_id!, {
                     page: options.page,
                     limit: options.limit,
                     filters,
@@ -91,7 +91,7 @@ export class OrderService {
      * Get single order by ID with access check
      */
     async getOrderById(
-        orderId: number,
+        orderId: string,
         userId: string,
         userRole: 'admin' | 'seller' | 'customer'
     ): Promise<ServiceResult<OrderWithItems>> {
@@ -117,7 +117,7 @@ export class OrderService {
 
             if (userRole === 'customer') {
                 const customer = await this.customerRepo.findByUserId(userId);
-                if (!customer || order.customer_id !== customer.id) {
+                if (!customer || order.customer_id !== customer.user_id) {
                     return {
                         success: false,
                         error: 'Access denied',
@@ -154,7 +154,7 @@ export class OrderService {
                     seller_id: sellerId,
                     customer_id: data.customer_id,
                     status: 'pending',
-                    total_amount: total,
+                    total_price: total,
                     notes: data.notes,
                 },
                 data.items.map(item => ({
@@ -184,7 +184,7 @@ export class OrderService {
      * Update order status (seller only)
      */
     async updateOrderStatus(
-        orderId: number,
+        orderId: string,
         sellerId: string,
         status: Order['status']
     ): Promise<ServiceResult<Order>> {
@@ -222,7 +222,7 @@ export class OrderService {
      * Can be called by PaymentService (webhook) or manually by Seller
      */
     async fulfillOrder(
-        orderId: number,
+        orderId: string,
         performedByUserId: string,
         source: 'payment_webhook' | 'manual' = 'manual'
     ): Promise<ServiceResult<{ success: boolean; message: string; results?: any[] }>> {
