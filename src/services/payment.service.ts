@@ -365,7 +365,7 @@ export class PaymentService {
 
         const userId = order?.user_id || 'system';
 
-        const result = await orderService.fulfillOrder(parseInt(orderId), userId, 'payment_webhook');
+        const result = await orderService.fulfillOrder(orderId, userId, 'payment_webhook');
 
         // Update with Duitku specific reference if not handled by fulfillOrder (fulfillOrder handles core logic)
         // But we want to ensure Duitku reference is saved.
@@ -391,7 +391,7 @@ export class PaymentService {
     }
 
     // saveDomain moved to OrderService, removing from here
-    async checkStatusByOrderId(orderId: number): Promise<ServiceResult<any>> {
+    async checkStatusByOrderId(orderId: string): Promise<ServiceResult<any>> {
         try {
             // Get transaction for this order
             const { data: transaction, error } = await this.supabaseAdmin

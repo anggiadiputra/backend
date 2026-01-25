@@ -1,86 +1,126 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { OrderRepository } from '../repositories/order.repository';
+import { OrderRepository, CustomerRepository } from '../repositories';
 
 export class InvoiceService {
-    private orderRepo: OrderRepository;
+  private orderRepo: OrderRepository;
+  private supabase: SupabaseClient; // Added supabase as a class property
 
-    constructor(supabase: SupabaseClient) {
-        this.orderRepo = new OrderRepository(supabase);
-    }
+  constructor(supabase: SupabaseClient) {
+    this.supabase = supabase; // Initialized supabase
+    this.orderRepo = new OrderRepository(supabase);
+  }
 
-    async generateInvoice(orderId: number) {
-        const order = await this.orderRepo.findByIdWithDetails(orderId);
+  async generateInvoice(orderId: string): Promise<string> {
+    try {
+      const order = await this.orderRepo.findByIdWithDetails(orderId);
 
-        if (!order) {
-            throw new Error('Order not found');
-        }
+      if (!order) {
+        throw new Error('Order not found');
+      }
 
-        // In a real application, you would use a library like 'pdfkit' or 'jspdf'
-        // For now, we will return a simple HTML string that can be opened as a "file"
-        const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice #${order.id}</title>
-        <style>
-          body { font-family: sans-serif; padding: 20px; }
-          .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-          .invoice-box { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #eee; box-shadow: 0 0 10px rgba(0, 0, 0, 0.15); }
-          .title { font-size: 24px; font-weight: bold; color: #333; }
-          table { width: 100%; line-height: inherit; text-align: left; border-collapse: collapse; }
-          table td { padding: 5px; vertical-align: top; }
-          table tr.heading td { background: #eee; border-bottom: 1px solid #ddd; font-weight: bold; }
-          table tr.item td { border-bottom: 1px solid #eee; }
-          table tr.total td:nth-child(2) { border-top: 2px solid #eee; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="invoice-box">
-          <div class="header">
-            <div>
-              <div class="title">INVOICE</div>
-              <div>Invoice #: INV-${order.created_at.slice(0, 4)}-${order.id}</div>
-              <div>Date: ${new Date(order.created_at).toLocaleDateString()}</div>
-              <div>Status: ${order.status.toUpperCase()}</div>
-            </div>
-            <div style="text-align: right;">
-              <div><strong>Seller Info</strong></div>
-              <div>Domain Management System</div>
-              <div>support@example.com</div>
-            </div>
-          </div>
+      // Get customer details (from relation or repo)
+      const customerRepo = new CustomerRepository(this.supabase);
+      let customer = null;
 
-          <div style="margin-bottom: 20px;">
-            <strong>Bill To:</strong><br />
-            ${order.customers?.name || 'Guest Customer'}<br />
-            ${order.customers?.email || ''}
-          </div>
+      if (order.customer_id) {
+        // Determine if customer_id is numeric (legacy) or uuid (new)
+        // Actually the repo uses string now
+        customer = await customerRepo.findById(order.customer_id);
+      }
 
-          <table>
-            <tr class="heading">
-              <td>Item</td>
-              <td style="text-align: right;">Price</td>
-            </tr>
-            ${order.order_items?.map(item => `
-              <tr class="item">
-                <td>${item.domain_name}.${item.tld} (${item.action} - ${item.years} year${item.years > 1 ? 's' : ''})</td>
-                <td style="text-align: right;">Rp ${item.subtotal.toLocaleString('id-ID')}</td>
-              </tr>
-            `).join('') || ''}
-            <tr class="total">
-              <td></td>
-              <td style="text-align: right;">Total: Rp ${order.total_amount.toLocaleString('id-ID')}</td>
-            </tr>
-          </table>
-          
-          <div style="margin-top: 40px; font-size: 12px; color: #777;">
-            <p>Thank you for your business!</p>
-          </div>
+      // Format numbers
+      const formatter = new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+      });
+
+      const date = new Date(order.created_at).toLocaleDateString('id-ID', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+
+      // Calculate tax (11% PPN)
+      const tax = order.total_price * 0.11;
+      const subtotal = order.total_price * 0.89; // Assuming total includes tax
+
+      // Generate HTML
+      // This is a simple template
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Invoice #${orderId}</title>
+    <style>
+        body { font-family: Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
+        .invoice-details { text-align: right; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #ddd; }
+        .totals { margin-top: 20px; float: right; width: 300px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .total-row { font-weight: bold; border-top: 2px solid #333; padding-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>INVOICE</h1>
+            <p><strong>Billed To:</strong><br>${customer?.name || 'Customer'}<br>${customer?.email || ''}</p>
         </div>
-      </body>
-      </html>
-    `;
+        <div class="invoice-details">
+            <p><strong>Invoice #:</strong> ${order.payment_transactions?.[0]?.invoice_number || `INV-${orderId.substring(0, 8)}`}</p>
+            <p><strong>Date:</strong> ${date}</p>
+            <p><strong>Order ID:</strong> #${orderId}</p>
+        </div>
+    </div>
 
-        return html;
+    <table>
+        <thead>
+            <tr>
+                <th>Item</th>
+                <th>Type</th>
+                <th>Price</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${order.order_items?.map(item => `
+            <tr>
+                <td>${item.domain_name}</td>
+                <td style="text-transform: capitalize">${item.action} (${item.years} year)</td>
+                <td>${formatter.format(item.subtotal || item.price)}</td>
+            </tr>
+            `).join('') || `
+            <tr>
+                <td>Domain Service</td>
+                <td style="text-transform: capitalize">Service</td>
+                <td>${formatter.format(order.total_price)}</td>
+            </tr>
+            `}
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <div class="row">
+            <span>Subtotal:</span>
+            <span>${formatter.format(subtotal)}</span>
+        </div>
+        <div class="row">
+            <span>PPN (11%):</span>
+            <span>${formatter.format(tax)}</span>
+        </div>
+        <div class="row total-row">
+            <span>Total:</span>
+            <span>${formatter.format(order.total_price)}</span>
+        </div>
+    </div>
+</body>
+</html>
+            `;
+    } catch (error: any) {
+      throw new Error(`Failed to generate invoice: ${error.message}`);
     }
+  }
 }

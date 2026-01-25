@@ -38,7 +38,7 @@ orders.get('/', zValidator('query', listOrdersSchema), async (c) => {
     page: parseInt(page),
     limit: parseInt(limit),
     status,
-    customer_id: customer_id ? parseInt(customer_id) : undefined,
+    customer_id,
   });
 
   if (!result.success) {
@@ -64,7 +64,7 @@ orders.get('/:id', async (c) => {
   const supabase = createAuthClient(token);
   const orderService = new OrderService(supabase, supabaseAdmin);
 
-  const result = await orderService.getOrderById(parseInt(orderId), user.id, user.role);
+  const result = await orderService.getOrderById(orderId, user.id, user.role);
 
   if (!result.success) {
     return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
@@ -83,7 +83,7 @@ orders.get('/:id/invoice', async (c) => {
   const invoiceService = new InvoiceService(supabase);
 
   try {
-    const html = await invoiceService.generateInvoice(parseInt(orderId));
+    const html = await invoiceService.generateInvoice(orderId);
     return c.html(html);
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
@@ -100,7 +100,7 @@ orders.get('/:id/payment-status', async (c) => {
   // PaymentService checks transaction by order_id.
 
   const paymentService = new PaymentService(supabaseAdmin);
-  const result = await paymentService.checkStatusByOrderId(parseInt(orderId));
+  const result = await paymentService.checkStatusByOrderId(orderId);
 
   if (!result.success) {
     return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
@@ -111,7 +111,7 @@ orders.get('/:id/payment-status', async (c) => {
 
 // Create order
 const createOrderSchema = z.object({
-  customer_id: z.number(),
+  customer_id: z.string(),
   items: z.array(z.object({
     domain_name: z.string(),
     tld: z.string(),
@@ -145,7 +145,7 @@ orders.post('/', strictLimiter, zValidator('json', createOrderSchema), async (c)
     ip_address: getClientIp(c),
     action: 'create_order',
     resource: `order/${result.data?.id}`,
-    payload: { items: body.items, total: result.data?.total_amount },
+    payload: { items: body.items, total: result.data?.total_price },
     status: 'success'
   });
 
@@ -158,7 +158,7 @@ orders.post('/', strictLimiter, zValidator('json', createOrderSchema), async (c)
 
 // Update order status (seller only)
 const updateStatusSchema = z.object({
-  status: z.enum(['pending', 'processing', 'completed', 'cancelled', 'refunded']),
+  status: z.enum(['pending', 'processing', 'completed', 'cancelled']),
 });
 
 orders.put('/:id/status', sellerOnly, zValidator('json', updateStatusSchema), async (c) => {
@@ -170,7 +170,7 @@ orders.put('/:id/status', sellerOnly, zValidator('json', updateStatusSchema), as
   const supabase = createAuthClient(token);
   const orderService = new OrderService(supabase, supabaseAdmin);
 
-  const result = await orderService.updateOrderStatus(parseInt(orderId), user.id, status);
+  const result = await orderService.updateOrderStatus(orderId, user.id, status);
 
   if (!result.success) {
     return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
@@ -201,7 +201,7 @@ orders.post('/:id/provision', sellerOnly, async (c) => {
   const supabase = createAuthClient(token);
   const orderService = new OrderService(supabase, supabaseAdmin);
 
-  const result = await orderService.fulfillOrder(parseInt(orderId), user.id, 'manual');
+  const result = await orderService.fulfillOrder(orderId, user.id, 'manual');
 
   if (!result.success) {
     return c.json({ success: false, error: result.error }, toStatusCode(result.statusCode || 500));
