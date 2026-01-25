@@ -295,11 +295,6 @@ export class DomainService {
                         console.error('[DomainService] Failed to sync domain to local DB:', syncError);
                     }
 
-                    // DEBUG: Log the keys of the data returned from Rdash
-                    const rawData = rdashResponse.data as any;
-                    console.log('[DEBUG] Rdash Keys:', Object.keys(rawData));
-                    if (rawData.registrant) console.log('[DEBUG] Registrant:', rawData.registrant);
-
                     return {
                         success: true,
                         data: { data: rdashResponse.data, source: 'rdash' },
