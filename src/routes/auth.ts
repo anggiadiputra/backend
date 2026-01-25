@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { authMiddleware } from '../middleware/auth';
 import { createAuthClient, supabaseAdmin } from '../services/supabase.service';
 import { LoggerService } from '../services/logger.service';
+import { rdashService } from '../services/rdash.service';
 import { getClientIp } from '../middleware/security';
 import { UAParser } from 'ua-parser-js';
 
@@ -71,25 +72,27 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
       return c.json({ success: false, error: error.message }, 400);
     }
 
-    if (!data.session) {
+    if (!data.session || !data.user) {
       await LoggerService.logAuth(getClientIp(c), 'verify_otp', 'failure', { email, error: 'No session created' });
       return c.json({ success: false, error: 'No session created' }, 400);
     }
+
+    const { user } = data;
 
     // Get or create user profile
     let { data: profile } = await supabaseAdmin
       .from('users')
       .select('*')
-      .eq('id', data.user?.id)
+      .eq('id', user.id)
       .single();
 
-    // Auto-create user if not exists
-    if (!profile && data.user) {
+    // Auto-create user if not exists (for generic login)
+    if (!profile) {
       const { data: newUser, error: createError } = await supabaseAdmin
         .from('users')
         .insert({
-          id: data.user.id,
-          email: data.user.email,
+          id: user.id,
+          email: user.email,
           role: 'customer',
         })
         .select()
@@ -104,7 +107,7 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
 
     await LoggerService.logAuth(getClientIp(c), 'verify_otp', 'success', {
       email,
-      user_id: data.user?.id,
+      user_id: user.id,
       role: profile?.role || 'customer'
     });
 
@@ -117,7 +120,7 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
       await supabaseAdmin
         .from('login_sessions')
         .insert({
-          user_id: data.user?.id,
+          user_id: user.id,
           ip_address: getClientIp(c),
           user_agent: userAgent,
           browser: result.browser.name || 'Unknown',
@@ -133,8 +136,8 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
       success: true,
       data: {
         user: {
-          id: data.user?.id,
-          email: data.user?.email,
+          id: user.id,
+          email: user.email,
           role: profile?.role || 'customer',
         },
         session: {
@@ -146,6 +149,137 @@ auth.post('/verify', authLimiter, zValidator('json', verifyOtpSchema), async (c)
     });
   } catch (error) {
     return c.json({ success: false, error: 'Failed to verify OTP' }, 500);
+  }
+});
+
+// Register Verify
+const registerVerifySchema = z.object({
+  email: z.string().email(),
+  token: z.string().min(6),
+  fullName: z.string().min(1),
+  phone: z.string().min(9), // Rdash: voice (9-20 digits)
+  address: z.string().min(1), // Rdash: street_1
+  city: z.string().min(1),
+  state: z.string().min(1),
+  country: z.string().length(2), // Rdash: country_code (ISO 2)
+  zip: z.string().min(1), // Rdash: postal_code
+  role: z.enum(['customer', 'seller']).default('customer'),
+  companyName: z.string().optional(), // For seller or Rdash organization
+});
+
+auth.post('/register/verify', authLimiter, zValidator('json', registerVerifySchema), async (c) => {
+  const payload = c.req.valid('json');
+  const { email, token, fullName, role } = payload;
+
+  try {
+    // 1. Verify OTP
+    const { data, error } = await supabaseAdmin.auth.verifyOtp({
+      email,
+      token,
+      type: 'email',
+    });
+
+    if (error) {
+      await LoggerService.logAuth(getClientIp(c), 'register_verify', 'failure', { email, error: error.message });
+      return c.json({ success: false, error: error.message }, 400);
+    }
+
+    if (!data.session || !data.user) {
+      return c.json({ success: false, error: 'No session created' }, 400);
+    }
+
+    const userId = data.user.id;
+
+    // 2. Create User Profile
+    // Upsert to ensure we handle existing users gracefully (though typically new for register)
+    const { error: upsertError } = await supabaseAdmin
+      .from('users')
+      .upsert({
+        id: userId,
+        email: email,
+        role: role,
+        full_name: fullName,
+        phone: payload.phone,
+        address: payload.address,
+        city: payload.city,
+        country: payload.country,
+        company_name: payload.companyName || (role === 'seller' ? fullName : null),
+        updated_at: new Date().toISOString()
+      });
+
+    if (upsertError) {
+      console.error('[Auth] Failed to create user profile:', upsertError);
+      // Don't fail the whole request, but log it.
+    }
+
+    // 3. Create Rdash Customer (if role is customer or we want all users to be customers in Rdash)
+    // Usually sellers are also customers in Rdash system context, but let's assume we maintain 1:1 map
+    let rdashId = null;
+    try {
+      const rdashResult = await rdashService.createCustomer({
+        name: fullName,
+        email: email,
+        organization: payload.companyName || fullName,
+        street_1: payload.address,
+        city: payload.city,
+        state: payload.state,
+        country_code: payload.country,
+        postal_code: payload.zip,
+        voice: payload.phone
+      });
+
+      if (rdashResult.success && rdashResult.data) {
+        rdashId = rdashResult.data.id;
+
+        // Link to local customer table
+        await supabaseAdmin
+          .from('customers')
+          .insert({
+            user_id: userId,
+            rdash_id: rdashId,
+            status: 'active'
+          });
+
+        console.log(`[Auth] Linked User ${userId} to Rdash Customer ${rdashId}`);
+      } else {
+        console.error('[Auth] Failed to create Rdash customer:', rdashResult.message);
+      }
+    } catch (rdashError) {
+      console.error('[Auth] Rdash creation exception:', rdashError);
+    }
+
+    await LoggerService.logAuth(getClientIp(c), 'register_verify', 'success', {
+      email,
+      user_id: userId,
+      role,
+      rdash_id: rdashId
+    });
+
+    return c.json({
+      success: true,
+      data: {
+        user: {
+          id: userId,
+          email: email,
+          role: role,
+          full_name: fullName,
+        },
+        session: {
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: data.session.expires_at,
+        },
+        rdash_id: rdashId
+      },
+    });
+
+  } catch (error: any) {
+    console.error('[Auth] Register Verify Error:', error);
+    return c.json({
+      success: false,
+      error: `Registration failed: ${error.message}`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, 500);
   }
 });
 
