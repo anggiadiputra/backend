@@ -8,7 +8,7 @@ interface RdashResponse<T> {
 }
 
 interface RdashListResponse<T> {
-  success: boolean;
+  success?: boolean;
   data: T[];
   message?: string;
   meta: {
@@ -81,7 +81,15 @@ class RdashService {
       throw new Error(`Rdash API error: ${response.statusText}`);
     }
 
-    return response.json() as Promise<RdashListResponse<RdashCustomer>>;
+    const result = await response.json() as RdashListResponse<RdashCustomer>;
+    // Rdash API list response doesn't strictly have a 'success' field on 200 OK.
+    // If we have data, we treat it as success.
+    if (!result.success && !result.data) {
+      // It might be a real error response
+      return result;
+    }
+    // Inject success: true if missing but data exists
+    return { ...result, success: true };
   }
 
   async getCustomer(customerId: number): Promise<RdashResponse<RdashCustomer>> {
