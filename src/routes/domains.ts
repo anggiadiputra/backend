@@ -356,4 +356,16 @@ domains.put('/:id/whois-protection', async (c) => {
   return c.json(result, 200);
 });
 
+// Update domain contact (registrant, admin, technical, billing)
+domains.put('/:id/contacts', async (c) => {
+  const user = c.get('user');
+  const token = c.get('token');
+  const domainId = c.req.param('id');
+  const body = await c.req.json();
+  const domainService = new DomainService(createAuthClient(token), supabaseAdmin);
+  const result = await domainService.manageDomain(parseInt(domainId), user.id, user.role, 'update_contact', body);
+  // Always return 200 to prevent browser console errors
+  return c.json(result, 200);
+});
+
 export default domains;

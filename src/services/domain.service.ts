@@ -644,6 +644,9 @@ export class DomainService {
                 case 'set_dnssec':
                     result = await rdashService.setDnssec(domainId, data.enabled);
                     break;
+                case 'update_contact':
+                    result = await rdashService.updateDomainContact(domainId, data.contact_type, data);
+                    break;
                 case 'whois':
                     result = await rdashService.whoisLookup(accessCheck.data!.name);
                     break;

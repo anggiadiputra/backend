@@ -1015,6 +1015,75 @@ class RdashService {
     });
     return response.json() as Promise<RdashResponse<any>>;
   }
+
+  // Update domain contact (registrant, admin, tech, billing)
+  async updateDomainContact(domainId: number, contactType: string, contactData: {
+    name?: string;
+    email?: string;
+    organization?: string;
+    street_1?: string;
+    street_2?: string;
+    city?: string;
+    state?: string;
+    country_code?: string;
+    postal_code?: string;
+    voice?: string;
+  }): Promise<RdashResponse<any>> {
+    try {
+      // Map contact type to API field name
+      const typeMap: Record<string, string> = {
+        'registrant': 'registrant_contact',
+        'admin': 'admin_contact',
+        'technical': 'tech_contact',
+        'tech': 'tech_contact',
+        'billing': 'billing_contact'
+      };
+
+      const apiContactType = typeMap[contactType] || contactType;
+
+      // Build form data
+      const formData = new URLSearchParams();
+      formData.append('contact_type', apiContactType);
+
+      if (contactData.name) formData.append('name', contactData.name);
+      if (contactData.email) formData.append('email', contactData.email);
+      if (contactData.organization) formData.append('organization', contactData.organization);
+      if (contactData.street_1) formData.append('street_1', contactData.street_1);
+      if (contactData.street_2) formData.append('street_2', contactData.street_2);
+      if (contactData.city) formData.append('city', contactData.city);
+      if (contactData.state) formData.append('state', contactData.state);
+      if (contactData.country_code) formData.append('country_code', contactData.country_code);
+      if (contactData.postal_code) formData.append('postal_code', contactData.postal_code);
+      if (contactData.voice) formData.append('voice', contactData.voice.replace(/[^\d+]/g, ''));
+
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/contacts`, {
+        method: 'PUT',
+        headers: {
+          ...this.getHeaders(),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData.toString(),
+      });
+
+      const result = await response.json() as RdashResponse<any>;
+
+      if (!response.ok) {
+        return {
+          success: false,
+          data: null,
+          message: result.message || `Failed to update ${contactType} contact`,
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      return {
+        success: false,
+        data: null,
+        message: error.message || `Failed to update ${contactType} contact`,
+      };
+    }
+  }
 }
 
 
