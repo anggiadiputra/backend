@@ -295,7 +295,7 @@ export class OrderService {
                     if (rdashResult.success) {
                         successCount++;
                         // Save domain
-                        if (item.action !== 'renew' && rdashResult.data) {
+                        if (rdashResult.data) {
                             await this.saveDomain(rdashResult.data, order.seller_id, order.rdash_customer_id!);
                         }
                     } else {
