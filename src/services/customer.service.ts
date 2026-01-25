@@ -307,16 +307,20 @@ export class CustomerService {
      * Also auto-links customers to users based on matching email
      */
     async syncCustomersFromRdash(sellerId: string): Promise<ServiceResult<{ synced: number; failed: number; linked: number }>> {
+        console.log(`[CustomerService] Starting sync for seller: ${sellerId}`);
         try {
+            console.log('[CustomerService] Fetching from Rdash...');
             const rdashResponse = await rdashService.getCustomers(1, 1000);
 
             if (!rdashResponse.success) {
+                console.error('[CustomerService] Rdash fetch failed:', rdashResponse.message);
                 return {
                     success: false,
-                    error: 'Failed to fetch customers from Rdash',
+                    error: 'Failed to fetch customers from Rdash: ' + rdashResponse.message,
                     statusCode: 500,
                 };
             }
+            console.log(`[CustomerService] Fetched ${rdashResponse.data.length} customers from Rdash.`);
 
             const adminRepo = new CustomerRepository(this.supabaseAdmin);
             let successCount = 0;
@@ -354,16 +358,20 @@ export class CustomerService {
                             linkedCount++;
                         }
                     }
-                } catch {
+                } catch (innerErr: any) {
+                    console.error('[CustomerService] Failed to process customer:', customer.id, innerErr);
                     failedCount++;
                 }
             }
+
+            console.log(`[CustomerService] Sync complete. Success: ${successCount}, Linked: ${linkedCount}, Failed: ${failedCount}`);
 
             return {
                 success: true,
                 data: { synced: successCount, failed: failedCount, linked: linkedCount },
             };
         } catch (error: any) {
+            console.error('[CustomerService] Sync CRASH:', error);
             return {
                 success: false,
                 error: error.message || 'Failed to sync customers',

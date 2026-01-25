@@ -30,6 +30,11 @@ import { apiKeyAuth } from './middleware/apiKey';
 const app = new Hono();
 
 // Global middleware
+app.use('*', async (c, next) => {
+  console.log(`[Server] Incoming Request: ${c.req.method} ${c.req.path}`);
+  await next();
+});
+
 app.use('*', logger());
 app.use('*', prettyJSON());
 app.use('*', xssSanitizer); // Sanitize inputs from XSS
@@ -129,8 +134,11 @@ app.notFound((c) => {
 
 // Error handler
 app.onError((err, c) => {
-  console.error('Server error:', err);
-  return c.json({ success: false, error: 'Internal server error' }, 500);
+  console.error('[Server] CRITICAL ERROR:', err);
+  if (err instanceof Error) {
+    console.error(err.stack);
+  }
+  return c.json({ success: false, error: 'Internal server error', message: err.message }, 500);
 });
 
 // Start server

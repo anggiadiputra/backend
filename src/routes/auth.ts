@@ -19,34 +19,137 @@ import { authLimiter } from '../middleware/security';
 
 // ...
 
-auth.post('/login', authLimiter, zValidator('json', sendOtpSchema), async (c) => {
-  const { email } = c.req.valid('json');
+// Login Endpoint - Debug Version (Restored)
+auth.post('/login', async (c) => {
+  const ip = getClientIp(c);
+  console.log(`[Auth] POST /login initiated from IP: ${ip}`);
 
   try {
+    const body = await c.req.json();
+    console.log('[Auth] Body:', body);
+
+    const { email } = body;
+    if (!email) return c.json({ success: false, error: 'No email' }, 400);
+
+    // Schema Validation
+    const schema = z.object({ email: z.string().email() });
+    const validation = schema.safeParse({ email });
+    if (!validation.success) {
+      return c.json({ success: false, error: 'Invalid email format' }, 400);
+    }
+
+    if (!supabaseAdmin) {
+      console.error('[Auth] CRITICAL: supabaseAdmin is undefined');
+      return c.json({ success: false, error: 'Internal Configuration Error' }, 500);
+    }
+
+    console.log('[Auth] Calling supabaseAdmin.auth.signInWithOtp...');
     const { error } = await supabaseAdmin.auth.signInWithOtp({
       email,
-      options: {
-        shouldCreateUser: true,
-      },
+      options: { shouldCreateUser: true }
     });
 
     if (error) {
-      await LoggerService.logAuth(getClientIp(c), 'login_otp_send', 'failure', { email, error: error.message });
+      console.error('[Auth] Supabase Error:', error.message);
+      await LoggerService.logAuth(ip, 'login_otp_send', 'failure', { email, error: error.message });
       return c.json({ success: false, error: error.message }, 400);
     }
 
-    await LoggerService.logAuth(getClientIp(c), 'login_otp_send', 'success', { email });
+    console.log('[Auth] OTP sent successfully');
+    await LoggerService.logAuth(ip, 'login_otp_send', 'success', { email });
 
     return c.json({
       success: true,
       message: 'OTP sent to your email',
     });
+
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[Auth] CRASH:', msg);
+    return c.json({ success: false, error: `Internal Server Error: ${msg}` }, 500);
+  }
+});
+
+// Login with Password
+const loginPasswordSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
+auth.post('/login-password', authLimiter, zValidator('json', loginPasswordSchema), async (c) => {
+  const { email, password } = c.req.valid('json');
+
+  try {
+    const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      await LoggerService.logAuth(getClientIp(c), 'login_password', 'failure', { email, error: error.message });
+      return c.json({ success: false, error: error.message }, 401);
+    }
+
+    if (!data.session || !data.user) {
+      return c.json({ success: false, error: 'No session created' }, 400);
+    }
+
+    // Get user profile
+    let { data: profile } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    await LoggerService.logAuth(getClientIp(c), 'login_password', 'success', {
+      email,
+      user_id: data.user.id,
+      role: profile?.role || 'unknown'
+    });
+
+    // Record Session
+    const userAgent = c.req.header('user-agent') || '';
+    const parser = new UAParser(userAgent);
+    const result = parser.getResult();
+
+    try {
+      await supabaseAdmin
+        .from('login_sessions')
+        .insert({
+          user_id: data.user.id,
+          ip_address: getClientIp(c),
+          user_agent: userAgent,
+          browser: result.browser.name || 'Unknown',
+          os: result.os.name || 'Unknown',
+          device_type: result.device.type || 'desktop',
+          last_active_at: new Date().toISOString()
+        });
+    } catch (sessionError) {
+      console.error('[Auth] Failed to record login session:', sessionError);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        user: {
+          id: data.user.id,
+          email: data.user.email!,
+          role: profile?.role || 'customer',
+          full_name: profile?.full_name
+        },
+        session: {
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          expires_at: data.session.expires_at,
+        },
+      },
+    });
+
   } catch (error: any) {
-    console.error('[Auth] Login Error:', error);
+    console.error('[Auth] Password Login Error:', error);
     return c.json({
       success: false,
-      error: `Failed to send OTP: ${error.message}`,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: `Login failed: ${error.message}`,
     }, 500);
   }
 });
@@ -161,18 +264,26 @@ const registerVerifySchema = z.object({
   address: z.string().min(1), // Rdash: street_1
   city: z.string().min(1),
   state: z.string().min(1),
-  country: z.string().length(2), // Rdash: country_code (ISO 2)
+  country: z.string().min(2), // Rdash: country_code (ISO 2) - Changed to min(2) to be safer
   zip: z.string().min(1), // Rdash: postal_code
   role: z.enum(['customer', 'seller']).default('customer'),
   companyName: z.string().optional(), // For seller or Rdash organization
+  password: z.string().min(8).optional(),
 });
 
-auth.post('/register/verify', authLimiter, zValidator('json', registerVerifySchema), async (c) => {
+auth.post('/register/verify', zValidator('json', registerVerifySchema, (result, c) => {
+  if (!result.success) {
+    console.error('[Auth] Validation Error:', JSON.stringify(result.error, null, 2));
+    return c.json({ success: false, error: 'Validation Failed', details: result.error }, 400);
+  }
+}), async (c) => {
   const payload = c.req.valid('json');
   const { email, token, fullName, role } = payload;
+  console.log(`[Auth] /register/verify HIT. Email: ${email}, Token: ${token}`);
 
   try {
     // 1. Verify OTP
+    console.log('[Auth] Calling Supabase verifyOtp...');
     const { data, error } = await supabaseAdmin.auth.verifyOtp({
       email,
       token,
@@ -180,9 +291,12 @@ auth.post('/register/verify', authLimiter, zValidator('json', registerVerifySche
     });
 
     if (error) {
+      console.error('[Auth] Supabase Verify Error:', error.message, error);
       await LoggerService.logAuth(getClientIp(c), 'register_verify', 'failure', { email, error: error.message });
-      return c.json({ success: false, error: error.message }, 400);
+      return c.json({ success: false, error: `OTP Verification Failed: ${error.message}` }, 400);
     }
+
+    console.log('[Auth] Supabase Verify Success. User ID:', data.user?.id);
 
     if (!data.session || !data.user) {
       return c.json({ success: false, error: 'No session created' }, 400);
@@ -190,7 +304,43 @@ auth.post('/register/verify', authLimiter, zValidator('json', registerVerifySche
 
     const userId = data.user.id;
 
-    // 2. Create User Profile
+    // 2. Set Password and Metadata
+    if (payload.password) {
+      console.log(`[Auth] Updating user ${userId}: Password + Metadata...`);
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        userId,
+        {
+          password: payload.password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: payload.fullName,
+            phone: payload.phone
+          }
+        }
+      );
+
+      if (updateError) {
+        console.error('[Auth] Failed to update user params:', updateError);
+        return c.json({ success: false, error: 'Failed to set password/metadata: ' + updateError.message }, 500);
+      }
+      console.log('[Auth] User password and metadata updated successfully.');
+    } else {
+      // Even if no password (unexpected for register), update metadata
+      console.log(`[Auth] Updating user ${userId}: Metadata only...`);
+      const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+        userId,
+        {
+          email_confirm: true,
+          user_metadata: {
+            full_name: payload.fullName,
+            phone: payload.phone
+          }
+        }
+      );
+      if (updateError) console.error('[Auth] Failed to update metadata:', updateError);
+    }
+
+    // 3. Create User Profile
     // Upsert to ensure we handle existing users gracefully (though typically new for register)
     const { error: upsertError } = await supabaseAdmin
       .from('users')
@@ -225,7 +375,8 @@ auth.post('/register/verify', authLimiter, zValidator('json', registerVerifySche
         state: payload.state,
         country_code: payload.country,
         postal_code: payload.zip,
-        voice: payload.phone
+        voice: payload.phone,
+        password: payload.password
       });
 
       if (rdashResult.success && rdashResult.data) {
@@ -423,6 +574,55 @@ auth.delete('/sessions/:id', authMiddleware, async (c) => {
     });
   } catch (error: any) {
     return c.json({ success: false, error: error.message }, 500);
+  }
+});
+
+// Change Password
+const changePasswordSchema = z.object({
+  currentPassword: z.string(),
+  newPassword: z.string().min(8),
+});
+
+auth.put('/password', authMiddleware, zValidator('json', changePasswordSchema), async (c) => {
+  const user = c.get('user');
+  const { currentPassword, newPassword } = c.req.valid('json');
+
+  try {
+    // 1. Verify current password by attempting to sign in
+    const { error: signInError } = await supabaseAdmin.auth.signInWithPassword({
+      email: user.email,
+      password: currentPassword,
+    });
+
+    if (signInError) {
+      await LoggerService.logAuth(getClientIp(c), 'change_password', 'failure', { email: user.email, error: 'Invalid current password' });
+      return c.json({ success: false, error: 'Incorrect current password' }, 401);
+    }
+
+    // 2. Update password
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      { password: newPassword }
+    );
+
+    if (updateError) {
+      await LoggerService.logAuth(getClientIp(c), 'change_password', 'failure', { email: user.email, error: updateError.message });
+      return c.json({ success: false, error: updateError.message }, 500);
+    }
+
+    await LoggerService.logAuth(getClientIp(c), 'change_password', 'success', { email: user.email, user_id: user.id });
+
+    // Optional: Revoke all other sessions for security?
+    // For now, let's just return success.
+
+    return c.json({
+      success: true,
+      message: 'Password updated successfully'
+    });
+
+  } catch (error: any) {
+    console.error('[Auth] Change Password Error:', error);
+    return c.json({ success: false, error: 'Failed to update password' }, 500);
   }
 });
 

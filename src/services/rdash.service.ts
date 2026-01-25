@@ -469,17 +469,18 @@ class RdashService {
     country_code: string;
     postal_code: string;
     voice: string;
+    password?: string;
   }): Promise<RdashResponse<{ id: number }>> {
     try {
       const formData = new URLSearchParams();
       formData.append('name', data.name);
       formData.append('email', data.email);
-      // Generate a random password for Rdash (customer won't use it directly)
-      const randomPassword = `Pwd${Math.random().toString(36).slice(2, 10)}!${Math.floor(Math.random() * 100)}`;
-      formData.append('password', randomPassword);
-      formData.append('password_confirmation', randomPassword);
-      // Organization is required by Rdash - use company name or default to "-"
-      formData.append('organization', data.organization || '-');
+      const rdashPassword = data.password || `Pwd${Math.random().toString(36).slice(2, 10)}!${Math.floor(Math.random() * 100)}`;
+      formData.append('password', rdashPassword);
+      formData.append('password_confirmation', rdashPassword);
+
+      // Organization is required by Rdash
+      formData.append('organization', data.organization || data.name || '-');
       formData.append('street_1', data.street_1);
       formData.append('city', data.city);
       formData.append('state', data.state);

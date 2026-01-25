@@ -8,6 +8,7 @@ import { env } from '../config/env';
  * This adds an extra layer of security on top of user authentication.
  */
 export async function apiKeyAuth(c: Context, next: Next) {
+    console.log(`[Security] Checking API Key for ${c.req.path}`);
     const apiKey = c.req.header('X-API-Key');
 
     // Skip API key check for health endpoints
