@@ -393,7 +393,31 @@ auth.post('/register/verify', zValidator('json', registerVerifySchema, (result, 
 
         console.log(`[Auth] Linked User ${userId} to Rdash Customer ${rdashId}`);
       } else {
-        console.error('[Auth] Failed to create Rdash customer:', rdashResult.message);
+        console.warn('[Auth] Failed to create Rdash customer (might exist):', rdashResult.message);
+
+        // Fallback: Try to find existing customer by email
+        console.log('[Auth] Attempting to find existing Rdash customer by email...');
+        const searchResult = await rdashService.getCustomers(1, 1, email);
+
+        if (searchResult.success && searchResult.data.length > 0) {
+          const existingCustomer = searchResult.data[0];
+          // Double check email match strictly
+          if (existingCustomer.email.toLowerCase() === email.toLowerCase()) {
+            rdashId = existingCustomer.id;
+            console.log(`[Auth] OUTCOME: Found existing Rdash Customer ID ${rdashId}. Linking...`);
+
+            // Link to local customer table
+            await supabaseAdmin
+              .from('customers')
+              .insert({
+                user_id: userId,
+                rdash_id: rdashId,
+                status: 'active'
+              });
+          }
+        } else {
+          console.error('[Auth] Could not find existing Rdash customer either.');
+        }
       }
     } catch (rdashError) {
       console.error('[Auth] Rdash creation exception:', rdashError);
