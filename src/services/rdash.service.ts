@@ -1017,7 +1017,9 @@ class RdashService {
   }
 
   // Update domain contact (registrant, admin, tech, billing)
+  // Uses /contacts/:contact_id endpoint when contact_id is provided
   async updateDomainContact(domainId: number, contactType: string, contactData: {
+    contact_id?: string | number;
     name?: string;
     email?: string;
     organization?: string;
@@ -1030,20 +1032,8 @@ class RdashService {
     voice?: string;
   }): Promise<RdashResponse<any>> {
     try {
-      // Map contact type to API field name
-      const typeMap: Record<string, string> = {
-        'registrant': 'registrant_contact',
-        'admin': 'admin_contact',
-        'technical': 'tech_contact',
-        'tech': 'tech_contact',
-        'billing': 'billing_contact'
-      };
-
-      const apiContactType = typeMap[contactType] || contactType;
-
       // Build form data
       const formData = new URLSearchParams();
-      formData.append('contact_type', apiContactType);
 
       if (contactData.name) formData.append('name', contactData.name);
       if (contactData.email) formData.append('email', contactData.email);
@@ -1056,7 +1046,27 @@ class RdashService {
       if (contactData.postal_code) formData.append('postal_code', contactData.postal_code);
       if (contactData.voice) formData.append('voice', contactData.voice.replace(/[^\d+]/g, ''));
 
-      const response = await this.fetchWithTimeout(`${this.baseUrl}/domains/${domainId}/contacts`, {
+      // Determine endpoint - use /contacts/:contact_id if contact_id is available
+      let endpoint: string;
+      if (contactData.contact_id) {
+        endpoint = `${this.baseUrl}/contacts/${contactData.contact_id}`;
+      } else {
+        // Fallback to domains/:id/contacts with contact_type
+        endpoint = `${this.baseUrl}/domains/${domainId}/contacts`;
+        const typeMap: Record<string, string> = {
+          'registrant': 'registrant_contact',
+          'admin': 'admin_contact',
+          'technical': 'tech_contact',
+          'tech': 'tech_contact',
+          'billing': 'billing_contact'
+        };
+        formData.append('contact_type', typeMap[contactType] || contactType);
+      }
+
+      console.log(`[RdashService] Updating contact via ${endpoint}`);
+      console.log(`[RdashService] Contact data:`, formData.toString());
+
+      const response = await this.fetchWithTimeout(endpoint, {
         method: 'PUT',
         headers: {
           ...this.getHeaders(),
@@ -1068,6 +1078,7 @@ class RdashService {
       const result = await response.json() as RdashResponse<any>;
 
       if (!response.ok) {
+        console.error(`[RdashService] Failed to update contact:`, result);
         return {
           success: false,
           data: null,
@@ -1077,6 +1088,7 @@ class RdashService {
 
       return result;
     } catch (error: any) {
+      console.error(`[RdashService] Error updating contact:`, error);
       return {
         success: false,
         data: null,
