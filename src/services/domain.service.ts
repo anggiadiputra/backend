@@ -296,8 +296,9 @@ export class DomainService {
                     }
 
                     // DEBUG: Log the keys of the data returned from Rdash
-                    console.log('[DEBUG] Rdash Keys:', Object.keys(rdashResponse.data));
-                    if (rdashResponse.data.registrant) console.log('[DEBUG] Registrant:', rdashResponse.data.registrant);
+                    const rawData = rdashResponse.data as any;
+                    console.log('[DEBUG] Rdash Keys:', Object.keys(rawData));
+                    if (rawData.registrant) console.log('[DEBUG] Registrant:', rawData.registrant);
 
                     return {
                         success: true,
