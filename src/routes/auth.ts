@@ -40,8 +40,13 @@ auth.post('/login', authLimiter, zValidator('json', sendOtpSchema), async (c) =>
       success: true,
       message: 'OTP sent to your email',
     });
-  } catch (error) {
-    return c.json({ success: false, error: 'Failed to send OTP' }, 500);
+  } catch (error: any) {
+    console.error('[Auth] Login Error:', error);
+    return c.json({
+      success: false,
+      error: `Failed to send OTP: ${error.message}`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }, 500);
   }
 });
 
